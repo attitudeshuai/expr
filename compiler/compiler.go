@@ -78,6 +78,9 @@ func Compile(tree *parser.Tree, config *conf.Config) (program *Program, err erro
 		c.debugInfo,
 		span,
 	)
+	if c.config != nil && c.config.Diagnostics != nil {
+		program.EnableDiagnostics()
+	}
 	return
 }
 

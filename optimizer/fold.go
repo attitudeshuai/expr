@@ -4,21 +4,36 @@ import (
 	"math"
 
 	. "github.com/expr-lang/expr/ast"
+	"github.com/expr-lang/expr/diagnostic"
 	"github.com/expr-lang/expr/file"
 )
 
 type fold struct {
 	applied bool
 	err     *file.Error
+	root    *Node
+	diags   *diagnostic.Collector
+}
+
+// reportFold feeds a fold action into the diagnostic pipeline. A constant fold
+// is only surfaced when the whole expression collapses to a constant, i.e.
+// when the folded node is the root node.
+func (fold *fold) reportFold(node *Node, newNode Node) {
+	if fold.diags == nil || node != fold.root || !isFoldedConstant(newNode) {
+		return
+	}
+	fold.diags.Report(diagnostic.CategoryConstantFold, (*node).Location(), "expression folded to a constant")
 }
 
 func (fold *fold) Visit(node *Node) {
 	patch := func(newNode Node) {
 		fold.applied = true
+		fold.reportFold(node, newNode)
 		patchWithType(node, newNode)
 	}
 	patchCopy := func(newNode Node) {
 		fold.applied = true
+		fold.reportFold(node, newNode)
 		patchCopyType(node, newNode)
 	}
 
@@ -340,4 +355,14 @@ func toBool(n Node) *BoolNode {
 		return a
 	}
 	return nil
+}
+
+// isFoldedConstant reports whether a node produced by a fold action is a
+// constant value.
+func isFoldedConstant(node Node) bool {
+	switch node.(type) {
+	case *IntegerNode, *FloatNode, *StringNode, *BoolNode, *ConstantNode:
+		return true
+	}
+	return false
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/expr-lang/expr/builtin"
 	"github.com/expr-lang/expr/conf"
+	"github.com/expr-lang/expr/diagnostic"
 	"github.com/expr-lang/expr/file"
 	"github.com/expr-lang/expr/internal/deref"
 	"github.com/expr-lang/expr/vm/runtime"
@@ -62,10 +63,18 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 				Location: location,
 				Message:  fmt.Sprintf("%v", r),
 			}
-			if err, ok := r.(error); ok {
-				f.Wrap(err)
+			if recovered, ok := r.(error); ok {
+				f.Wrap(recovered)
 			}
-			err = f.Bind(program.source)
+			bound := f.Bind(program.source)
+			if program.diagnostics {
+				err = &diagnostic.Error{
+					Category: diagnostic.CategoryRuntimeError,
+					Err:       bound,
+				}
+			} else {
+				err = bound
+			}
 		}
 	}()
 

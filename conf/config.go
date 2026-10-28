@@ -7,6 +7,7 @@ import (
 	"github.com/expr-lang/expr/ast"
 	"github.com/expr-lang/expr/builtin"
 	"github.com/expr-lang/expr/checker/nature"
+	"github.com/expr-lang/expr/diagnostic"
 	"github.com/expr-lang/expr/vm/runtime"
 )
 
@@ -41,6 +42,14 @@ type Config struct {
 	// When enabled, the lexer treats `if`/`else` as identifiers and the parser
 	// will not parse `if` statements.
 	DisableIfOperator bool
+
+	// Diagnostics is the collector of the unified diagnostic pipeline. When
+	// nil, all stages behave exactly as in the single-error mode and no
+	// diagnostic is collected.
+	Diagnostics *diagnostic.Collector
+	// StrictDiagnostics upgrades the first reported warning diagnostic
+	// (shadow, builtin shadow or constant fold) to a compilation failure.
+	StrictDiagnostics bool
 }
 
 // CreateNew creates new config with default values.

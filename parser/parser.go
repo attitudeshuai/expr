@@ -11,6 +11,7 @@ import (
 	. "github.com/expr-lang/expr/ast"
 	"github.com/expr-lang/expr/builtin"
 	"github.com/expr-lang/expr/conf"
+	"github.com/expr-lang/expr/diagnostic"
 	"github.com/expr-lang/expr/file"
 	. "github.com/expr-lang/expr/parser/lexer"
 	"github.com/expr-lang/expr/parser/operator"
@@ -55,6 +56,7 @@ type Parser struct {
 	config           *conf.Config
 	depth            int  // predicate call depth
 	nodeCount        uint // tracks number of AST nodes created
+	explicitBuiltins map[*BuiltinNode]bool
 }
 
 func (p *Parser) Parse(input string, config *conf.Config) (*Tree, error) {
@@ -71,6 +73,7 @@ func (p *Parser) Parse(input string, config *conf.Config) (*Tree, error) {
 		}
 	}
 	source := file.NewSource(input)
+	p.explicitBuiltins = make(map[*BuiltinNode]bool)
 	p.lexer.Reset(source)
 	p.next()
 	node := p.parseSequenceExpression()
@@ -80,14 +83,16 @@ func (p *Parser) Parse(input string, config *conf.Config) (*Tree, error) {
 	}
 
 	tree := &Tree{
-		Node:   node,
-		Source: source,
+		Node:             node,
+		Source:           source,
+		ExplicitBuiltins: p.explicitBuiltins,
 	}
 	err := p.err
 
 	// cleanup non-reusable pointer values and reset state
 	p.err = nil
 	p.config = nil
+	p.explicitBuiltins = nil
 	p.lexer.Reset(file.Source{})
 
 	if err != nil {
@@ -138,6 +143,9 @@ func (p *Parser) createMemberNode(n *MemberNode, loc file.Location) *MemberNode 
 type Tree struct {
 	Node   Node
 	Source file.Source
+	// ExplicitBuiltins marks BuiltinNode nodes which were selected with the
+	// explicit :: operator, so the name resolution choice was intentional.
+	ExplicitBuiltins map[*BuiltinNode]bool
 }
 
 func Parse(input string) (*Tree, error) {
@@ -153,11 +161,20 @@ func (p *Parser) error(format string, args ...any) {
 }
 
 func (p *Parser) errorAt(token Token, format string, args ...any) {
+	p.recordError(&file.Error{
+		Location: token.Location,
+		Message:  fmt.Sprintf(format, args...),
+	})
+}
+
+// recordError feeds an error into the diagnostic pipeline and keeps the first
+// reported error as the parse result, preserving the previous behavior.
+func (p *Parser) recordError(e *file.Error) {
 	if p.err == nil { // show first error
-		p.err = &file.Error{
-			Location: token.Location,
-			Message:  fmt.Sprintf(format, args...),
-		}
+		p.err = e
+	}
+	if p.config != nil && p.config.Diagnostics != nil {
+		p.config.Diagnostics.ReportError(diagnostic.CategoryParseError, e)
 	}
 }
 
@@ -176,13 +193,13 @@ func (p *Parser) next() {
 	case errors.Is(err, io.EOF):
 		p.error("unexpected end of expression")
 	case errors.As(err, &e):
-		p.err = e
+		p.recordError(e)
 	default:
-		p.err = &file.Error{
+		p.recordError(&file.Error{
 			Location: p.current.Location,
 			Message:  "unknown lexing error",
 			Prev:     err,
-		}
+		})
 	}
 }
 
@@ -619,6 +636,11 @@ func (p *Parser) parseCall(token Token, arguments []Node, checkOverrides bool) N
 		if node == nil {
 			return nil
 		}
+		if !checkOverrides {
+			if builtinNode, ok := node.(*BuiltinNode); ok {
+				p.explicitBuiltins[builtinNode] = true
+			}
+		}
 	} else if _, ok := builtin.Index[token.Value]; ok && (p.config == nil || !p.config.Disabled[token.Value]) && !isOverridden {
 		node = p.createNode(&BuiltinNode{
 			Name:      token.Value,
@@ -626,6 +648,11 @@ func (p *Parser) parseCall(token Token, arguments []Node, checkOverrides bool) N
 		}, token.Location)
 		if node == nil {
 			return nil
+		}
+		if !checkOverrides {
+			if builtinNode, ok := node.(*BuiltinNode); ok {
+				p.explicitBuiltins[builtinNode] = true
+			}
 		}
 
 	} else {

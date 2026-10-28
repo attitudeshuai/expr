@@ -11,6 +11,7 @@ import (
 	"github.com/expr-lang/expr/checker"
 	"github.com/expr-lang/expr/compiler"
 	"github.com/expr-lang/expr/conf"
+	"github.com/expr-lang/expr/diagnostic"
 	"github.com/expr-lang/expr/file"
 	"github.com/expr-lang/expr/optimizer"
 	"github.com/expr-lang/expr/parser"
@@ -225,6 +226,28 @@ func MaxNodes(n uint) Option {
 	}
 }
 
+// WithDiagnostics enables the unified diagnostic pipeline and routes parser
+// and type checker errors, optimizer folds and suspicious constructs to the
+// provided collector. Collected diagnostics are delivered with the
+// compilation result via the collector itself, regardless of whether
+// compilation succeeds or fails. Without this option, no diagnostic is
+// collected and the compilation behaves as in the single-error mode.
+func WithDiagnostics(collector *diagnostic.Collector) Option {
+	return func(c *conf.Config) {
+		c.Diagnostics = collector
+	}
+}
+
+// StrictDiagnostics upgrades the first collected warning diagnostic (shadowed
+// loop variable, builtin shadowing an environment field or whole-expression
+// constant fold) to a compilation failure. It has no effect without
+// WithDiagnostics.
+func StrictDiagnostics() Option {
+	return func(c *conf.Config) {
+		c.StrictDiagnostics = true
+	}
+}
+
 // Compile parses and compiles given input expression to bytecode program.
 func Compile(input string, ops ...Option) (*vm.Program, error) {
 	config := conf.CreateNew()
@@ -249,6 +272,14 @@ func Compile(input string, ops ...Option) (*vm.Program, error) {
 				return nil, fileError.Bind(tree.Source)
 			}
 			return nil, err
+		}
+	}
+
+	// In strict mode the first upgradable diagnostic fails the compilation.
+	// Hard errors above take precedence and are already returned.
+	if config.StrictDiagnostics && config.Diagnostics != nil {
+		if d, ok := config.Diagnostics.FirstUpgradable(); ok {
+			return nil, d.Bind(tree.Source)
 		}
 	}
 

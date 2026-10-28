@@ -10,6 +10,7 @@ import (
 	"github.com/expr-lang/expr/builtin"
 	. "github.com/expr-lang/expr/checker/nature"
 	"github.com/expr-lang/expr/conf"
+	"github.com/expr-lang/expr/diagnostic"
 	"github.com/expr-lang/expr/file"
 	"github.com/expr-lang/expr/parser"
 )
@@ -56,11 +57,28 @@ type Checker struct {
 	varScopes       []varScope
 	err             *file.Error
 	needsReset      bool
+	// emitDiagnostics enables reporting into the diagnostic pipeline. It is
+	// switched off for the transient type checks performed between patcher
+	// runs, so only the final tree state is reported.
+	emitDiagnostics bool
+	// explicitBuiltins marks builtin calls forced with the :: operator.
+	explicitBuiltins map[*ast.BuiltinNode]bool
+	// predicateFrames tracks syntactic nesting of predicate builtins. Unlike
+	// predicateScopes, a frame is opened before visiting the collection
+	// argument, so a nested predicate builtin (which lives in the collection
+	// expression of an outer one) is visible. It only feeds shadow reporting
+	// and never changes name resolution.
+	predicateFrames []predicateFrame
 }
 
 type predicateScope struct {
 	collection Nature
 	vars       []varScope
+}
+
+type predicateFrame struct {
+	node ast.Node
+	vars []string // named loop variables in addition to the implicit "#"
 }
 
 type varScope struct {
@@ -85,6 +103,14 @@ func (v *Checker) PatchAndCheck(tree *parser.Tree, config *conf.Config) (reflect
 // and error if any. If config is nil, then default configuration will be used.
 func (v *Checker) Check(tree *parser.Tree, config *conf.Config) (reflect.Type, error) {
 	v.reset(config)
+	v.emitDiagnostics = true
+	return v.check(tree)
+}
+
+// checkSilently runs a type check without feeding the diagnostic pipeline. It
+// is used for the transient trees observed between patcher runs.
+func (v *Checker) checkSilently(tree *parser.Tree) (reflect.Type, error) {
+	v.emitDiagnostics = false
 	return v.check(tree)
 }
 
@@ -96,7 +122,7 @@ func (v *Checker) runVisitors(tree *parser.Tree, runRepeatable bool) {
 		for _, visitor := range v.config.Visitors {
 			// We need to perform types check, because some visitors may rely on
 			// types information available in the tree.
-			_, _ = v.Check(tree, v.config)
+			_, _ = v.checkSilently(tree)
 
 			r, repeatable := visitor.(interface {
 				Reset()
@@ -123,6 +149,7 @@ func (v *Checker) runVisitors(tree *parser.Tree, runRepeatable bool) {
 }
 
 func (v *Checker) check(tree *parser.Tree) (reflect.Type, error) {
+	v.explicitBuiltins = tree.ExplicitBuiltins
 	nt := v.visit(tree.Node)
 
 	// To keep compatibility with previous versions, we should return any, if nature is unknown.
@@ -142,15 +169,17 @@ func (v *Checker) check(tree *parser.Tree) (reflect.Type, error) {
 			}
 		}
 
+		var mismatch bool
 		switch v.config.Expect {
 		case reflect.Int, reflect.Int64, reflect.Float64:
-			if !nt.IsNumber() {
-				return nil, fmt.Errorf("expected %v, but got %s", v.config.Expect, nt.String())
-			}
+			mismatch = !nt.IsNumber()
 		default:
-			if nt.Kind != v.config.Expect {
-				return nil, fmt.Errorf("expected %v, but got %s", v.config.Expect, nt.String())
-			}
+			mismatch = nt.Kind != v.config.Expect
+		}
+		if mismatch {
+			message := fmt.Sprintf("expected %v, but got %s", v.config.Expect, nt.String())
+			v.report(diagnostic.CategoryTypeError, tree.Node.Location(), message)
+			return nil, fmt.Errorf(message)
 		}
 	}
 
@@ -163,6 +192,7 @@ func (v *Checker) reset(config *conf.Config) {
 		clearSlice(v.varScopes)
 		v.predicateScopes = v.predicateScopes[:0]
 		v.varScopes = v.varScopes[:0]
+		v.predicateFrames = v.predicateFrames[:0]
 		v.err = nil
 	}
 	v.needsReset = true
@@ -237,13 +267,54 @@ func (v *Checker) visit(node ast.Node) Nature {
 }
 
 func (v *Checker) error(node ast.Node, format string, args ...any) Nature {
-	if v.err == nil { // show first error
-		v.err = &file.Error{
-			Location: node.Location(),
-			Message:  fmt.Sprintf(format, args...),
-		}
-	}
+	v.recordFileError(&file.Error{
+		Location: node.Location(),
+		Message:  fmt.Sprintf(format, args...),
+	})
 	return Nature{}
+}
+
+// recordFileError feeds an error into the diagnostic pipeline and keeps the
+// first reported error as the type check result, preserving the previous
+// behavior.
+func (v *Checker) recordFileError(err *file.Error) {
+	if v.err == nil { // show first error
+		v.err = err
+	}
+	v.report(diagnostic.CategoryTypeError, err.Location, err.Message)
+}
+
+// report sends a warning or error diagnostic to the pipeline. Reporting is a
+// no-op when no collector is configured or while checking transient trees
+// during patching.
+func (v *Checker) report(category diagnostic.Category, location file.Location, format string, args ...any) {
+	if !v.emitDiagnostics || v.config == nil || v.config.Diagnostics == nil {
+		return
+	}
+	v.config.Diagnostics.Report(category, location, fmt.Sprintf(format, args...))
+}
+
+// envIsOpen reports whether the environment may provide names which are not
+// statically known, in which case a builtin call silently takes precedence
+// over a possible environment field of the same name.
+func (v *Checker) envIsOpen() bool {
+	if v.config.EnvObject == nil {
+		return false
+	}
+	env := v.config.Env
+	if env.IsUnknown(&v.config.NtCache) {
+		return true
+	}
+	return env.Kind == reflect.Map && !env.Strict
+}
+
+// loopVarName renders the name of a predicate loop variable: the implicit
+// current element pointer is "#", named pointers render as "#name".
+func loopVarName(name string) string {
+	if name == "" {
+		return "#"
+	}
+	return "#" + name
 }
 
 func (v *Checker) identifierNode(node *ast.IdentifierNode) Nature {
@@ -691,9 +762,7 @@ func (v *Checker) callNode(node *ast.CallNode) Nature {
 	if nt.Kind == reflect.Func {
 		outType, err := v.checkArguments(fnName, nt, node.Arguments, node)
 		if err != nil {
-			if v.err == nil {
-				v.err = err
-			}
+			v.recordFileError(err)
 			return Nature{}
 		}
 		return outType
@@ -702,6 +771,24 @@ func (v *Checker) callNode(node *ast.CallNode) Nature {
 }
 
 func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
+	// When the environment may carry names which are not statically known,
+	// the builtin silently wins over an environment field with the same
+	// name. The resolution precedence is not changed; this is only reported.
+	// The :: operator selects the builtin explicitly and is not reported.
+	if !v.explicitBuiltins[node] && v.envIsOpen() {
+		v.report(diagnostic.CategoryBuiltinShadow, node.Location(),
+			"builtin function %q takes precedence over environment field with the same name", node.Name)
+	}
+
+	// Open a syntactic predicate frame for the whole call, including the
+	// collection argument where nested predicates live.
+	if namedVars, ok := predicateLoopVars(node); ok {
+		v.predicateFrames = append(v.predicateFrames, predicateFrame{node: node, vars: namedVars})
+		defer func() {
+			v.predicateFrames = v.predicateFrames[:len(v.predicateFrames)-1]
+		}()
+	}
+
 	switch node.Name {
 	case "all", "none", "any", "one":
 		collection := v.visit(node.Arguments[0])
@@ -710,7 +797,7 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 			return v.error(node.Arguments[0], "builtin %v takes only array (got %v)", node.Name, collection.String())
 		}
 
-		v.begin(collection)
+		v.begin(node, collection)
 		predicate := v.visit(node.Arguments[1])
 		v.end()
 
@@ -733,7 +820,7 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 			return v.error(node.Arguments[0], "builtin %v takes only array (got %v)", node.Name, collection.String())
 		}
 
-		v.begin(collection)
+		v.begin(node, collection)
 		predicate := v.visit(node.Arguments[1])
 		v.end()
 
@@ -760,7 +847,7 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 			return v.error(node.Arguments[0], "builtin %v takes only array (got %v)", node.Name, collection.String())
 		}
 
-		v.begin(collection, varScope{"index", v.config.NtCache.FromType(intType)})
+		v.begin(node, collection, varScope{"index", v.config.NtCache.FromType(intType)})
 		predicate := v.visit(node.Arguments[1])
 		v.end()
 
@@ -783,7 +870,7 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 			return v.config.NtCache.FromType(intType)
 		}
 
-		v.begin(collection)
+		v.begin(node, collection)
 		predicate := v.visit(node.Arguments[1])
 		v.end()
 
@@ -807,7 +894,7 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 		}
 
 		if len(node.Arguments) == 2 {
-			v.begin(collection)
+			v.begin(node, collection)
 			predicate := v.visit(node.Arguments[1])
 			v.end()
 
@@ -830,7 +917,7 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 			return v.error(node.Arguments[0], "builtin %v takes only array (got %v)", node.Name, collection.String())
 		}
 
-		v.begin(collection)
+		v.begin(node, collection)
 		predicate := v.visit(node.Arguments[1])
 		v.end()
 
@@ -856,7 +943,7 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 			return v.error(node.Arguments[0], "builtin %v takes only array (got %v)", node.Name, collection.String())
 		}
 
-		v.begin(collection)
+		v.begin(node, collection)
 		predicate := v.visit(node.Arguments[1])
 		v.end()
 
@@ -879,7 +966,7 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 			return v.error(node.Arguments[0], "builtin %v takes only array (got %v)", node.Name, collection.String())
 		}
 
-		v.begin(collection)
+		v.begin(node, collection)
 		predicate := v.visit(node.Arguments[1])
 		v.end()
 
@@ -902,7 +989,7 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 			return v.error(node.Arguments[0], "builtin %v takes only array (got %v)", node.Name, collection.String())
 		}
 
-		v.begin(collection)
+		v.begin(node, collection)
 		predicate := v.visit(node.Arguments[1])
 		v.end()
 
@@ -928,7 +1015,7 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 			return v.error(node.Arguments[0], "builtin %v takes only array (got %v)", node.Name, collection.String())
 		}
 
-		v.begin(collection, varScope{"index", v.config.NtCache.FromType(intType)}, varScope{"acc", Nature{}})
+		v.begin(node, collection, varScope{"index", v.config.NtCache.FromType(intType)}, varScope{"acc", Nature{}})
 		predicate := v.visit(node.Arguments[1])
 		v.end()
 
@@ -954,7 +1041,58 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 	return v.error(node, "unknown builtin %v", node.Name)
 }
 
-func (v *Checker) begin(collectionNature Nature, vars ...varScope) {
+// predicateLoopVars reports the named loop variables introduced by a
+// predicate builtin, alongside the implicit current element pointer "#". The
+// boolean is false when the call does not introduce a predicate (count and
+// sum without a predicate argument).
+func predicateLoopVars(node *ast.BuiltinNode) ([]string, bool) {
+	switch node.Name {
+	case "all", "none", "any", "one", "filter",
+		"find", "findLast", "findIndex", "findLastIndex",
+		"groupBy", "sortBy":
+		return nil, true
+	case "map":
+		return []string{"index"}, true
+	case "reduce":
+		return []string{"index", "acc"}, true
+	case "count", "sum":
+		if len(node.Arguments) == 2 {
+			return nil, true
+		}
+	}
+	return nil, false
+}
+
+func (v *Checker) begin(node ast.Node, collectionNature Nature, vars ...varScope) {
+	// Every predicate introduces an implicit loop variable "#" pointing at
+	// the current element, plus optional named variables ("#index", "#acc").
+	// When a nested predicate reintroduces a name already bound by an
+	// enclosing predicate, the inner loop variable shadows the outer one and
+	// the outer value becomes inaccessible.
+	if v.emitDiagnostics && v.config != nil && v.config.Diagnostics != nil {
+		introduced := make(map[string]bool, len(vars)+1)
+		introduced[""] = true
+		for _, introducedVar := range vars {
+			introduced[introducedVar.name] = true
+		}
+		for _, frame := range v.predicateFrames {
+			// The frame of the current call is already open; only enclosing
+			// predicates can be shadowed.
+			if frame.node == node {
+				continue
+			}
+			// The implicit current element pointer "#" is always reintroduced.
+			v.report(diagnostic.CategoryShadow, node.Location(),
+				"loop variable %s shadows loop variable in enclosing predicate", loopVarName(""))
+			for _, name := range frame.vars {
+				if introduced[name] {
+					v.report(diagnostic.CategoryShadow, node.Location(),
+						"loop variable %s shadows loop variable in enclosing predicate", loopVarName(name))
+				}
+			}
+		}
+	}
+
 	v.predicateScopes = append(v.predicateScopes, predicateScope{
 		collection: collectionNature,
 		vars:       vars,
@@ -1021,9 +1159,7 @@ func (v *Checker) checkFunction(f *builtin.Function, node ast.Node, arguments []
 	} else if len(f.Types) == 0 {
 		nt, err := v.checkArguments(f.Name, v.config.NtCache.FromType(f.Type()), arguments, node)
 		if err != nil {
-			if v.err == nil {
-				v.err = err
-			}
+			v.recordFileError(err)
 			return Nature{}
 		}
 		// No type was specified, so we assume the function returns any.
@@ -1047,9 +1183,7 @@ func (v *Checker) checkFunction(f *builtin.Function, node ast.Node, arguments []
 		return outNature
 	}
 	if lastErr != nil {
-		if v.err == nil {
-			v.err = lastErr
-		}
+		v.recordFileError(lastErr)
 		return Nature{}
 	}
 

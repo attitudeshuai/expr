@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	. "github.com/expr-lang/expr/ast"
+	"github.com/expr-lang/expr/diagnostic"
 	"github.com/expr-lang/expr/file"
 )
 
@@ -15,6 +16,8 @@ type constExpr struct {
 	applied bool
 	err     error
 	fns     map[string]reflect.Value
+	root    *Node
+	diags   *diagnostic.Collector
 }
 
 func (c *constExpr) Visit(node *Node) {
@@ -73,6 +76,9 @@ func (c *constExpr) Visit(node *Node) {
 					return
 				}
 				constNode := &ConstantNode{Value: value}
+				if c.diags != nil && node == c.root {
+					c.diags.Report(diagnostic.CategoryConstantFold, (*node).Location(), "expression folded to a constant")
+				}
 				patchWithType(node, constNode)
 				c.applied = true
 			}

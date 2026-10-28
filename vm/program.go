@@ -28,6 +28,18 @@ type Program struct {
 	functions []Function
 	debugInfo map[string]string
 	span      *Span
+	// diagnostics reports runtime failures through the diagnostic pipeline,
+	// i.e. the returned error carries a diagnostic category. When false, the
+	// runtime returns the *file.Error exactly as in the single-error mode.
+	diagnostics bool
+}
+
+// EnableDiagnostics makes runtime failures of this program return as
+// diagnostic errors, which carry a category in addition to the original
+// message and location. It is set by the compiler when the program is
+// compiled with the diagnostic pipeline enabled.
+func (program *Program) EnableDiagnostics() {
+	program.diagnostics = true
 }
 
 // NewProgram returns a new Program. It's used by the compiler.

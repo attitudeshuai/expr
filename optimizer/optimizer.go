@@ -6,14 +6,24 @@ import (
 
 	. "github.com/expr-lang/expr/ast"
 	"github.com/expr-lang/expr/conf"
+	"github.com/expr-lang/expr/diagnostic"
+	"github.com/expr-lang/expr/file"
 )
 
 func Optimize(node *Node, config *conf.Config) error {
+	var diags *diagnostic.Collector
+	if config != nil {
+		diags = config.Diagnostics
+	}
 	Walk(node, &inArray{})
 	for limit := 1000; limit >= 0; limit-- {
-		fold := &fold{}
+		fold := &fold{
+			root:  node,
+			diags: diags,
+		}
 		Walk(node, fold)
 		if fold.err != nil {
+			diags.ReportError(diagnostic.CategoryOptimizationError, fold.err)
 			return fold.err
 		}
 		if !fold.applied {
@@ -23,10 +33,17 @@ func Optimize(node *Node, config *conf.Config) error {
 	if config != nil && len(config.ConstFns) > 0 {
 		for limit := 100; limit >= 0; limit-- {
 			constExpr := &constExpr{
-				fns: config.ConstFns,
+				fns:   config.ConstFns,
+				root:  node,
+				diags: diags,
 			}
 			Walk(node, constExpr)
 			if constExpr.err != nil {
+				if fileError, ok := constExpr.err.(*file.Error); ok {
+					diags.ReportError(diagnostic.CategoryOptimizationError, fileError)
+				} else {
+					diags.Report(diagnostic.CategoryOptimizationError, (*node).Location(), constExpr.err.Error())
+				}
 				return constExpr.err
 			}
 			if !constExpr.applied {

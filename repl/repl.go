@@ -13,6 +13,8 @@ import (
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/builtin"
 	"github.com/expr-lang/expr/debug"
+	"github.com/expr-lang/expr/diagnostic"
+	"github.com/expr-lang/expr/file"
 	"github.com/expr-lang/expr/vm"
 )
 
@@ -84,7 +86,12 @@ func main() {
 			continue
 		}
 
-		program, err = expr.Compile(line, expr.Env(env), fn)
+		collector := diagnostic.NewCollector()
+		program, err = expr.Compile(line, expr.Env(env), fn, expr.WithDiagnostics(collector))
+		for _, d := range collector.Diagnostics() {
+			d = d.Bind(file.NewSource(line))
+			fmt.Printf("%s: %s (%d:%d)\n", d.Category, d.Message, d.Line, d.Column+1)
+		}
 		if err != nil {
 			fmt.Printf("compile error: %s\n", err)
 			continue
