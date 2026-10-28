@@ -13,7 +13,9 @@ For example, the following expression:
 	any(x, x > 1) || any(x, x < 10) -> any(x, x > 1 || x < 10)
 	none(x, x > 1) && none(x, x < 10) -> none(x, x > 1 || x < 10)
 */
-type predicateCombination struct{}
+type predicateCombination struct {
+	p *pipeline
+}
 
 func (v *predicateCombination) Visit(node *Node) {
 	if op, ok := (*node).(*BinaryNode); ok && operator.IsBoolean(op.Operator) {
@@ -29,7 +31,7 @@ func (v *predicateCombination) Visit(node *Node) {
 							},
 						}
 						v.Visit(&predicate.Node)
-						patchCopyType(node, &BuiltinNode{
+						v.p.patchCopyType(node, &BuiltinNode{
 							Name: left.Name,
 							Arguments: []Node{
 								left.Arguments[0],

@@ -6,9 +6,11 @@ import (
 	. "github.com/expr-lang/expr/ast"
 )
 
-type inRange struct{}
+type inRange struct {
+	p *pipeline
+}
 
-func (*inRange) Visit(node *Node) {
+func (v *inRange) Visit(node *Node) {
 	switch n := (*node).(type) {
 	case *BinaryNode:
 		if n.Operator == "in" {
@@ -22,7 +24,7 @@ func (*inRange) Visit(node *Node) {
 			if rangeOp, ok := n.Right.(*BinaryNode); ok && rangeOp.Operator == ".." {
 				if from, ok := rangeOp.Left.(*IntegerNode); ok {
 					if to, ok := rangeOp.Right.(*IntegerNode); ok {
-						patchCopyType(node, &BinaryNode{
+						v.p.patchCopyType(node, &BinaryNode{
 							Operator: "and",
 							Left: &BinaryNode{
 								Operator: ">=",

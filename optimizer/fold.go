@@ -8,18 +8,30 @@ import (
 )
 
 type fold struct {
+	p       *pipeline
 	applied bool
 	err     *file.Error
+}
+
+func (fold *fold) changed() bool {
+	return fold.applied
+}
+
+func (fold *fold) ruleErr() error {
+	if fold.err != nil {
+		return fold.err
+	}
+	return nil
 }
 
 func (fold *fold) Visit(node *Node) {
 	patch := func(newNode Node) {
 		fold.applied = true
-		patchWithType(node, newNode)
+		fold.p.patchWithType(node, newNode)
 	}
 	patchCopy := func(newNode Node) {
 		fold.applied = true
-		patchCopyType(node, newNode)
+		fold.p.patchCopyType(node, newNode)
 	}
 
 	switch n := (*node).(type) {

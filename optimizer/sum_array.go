@@ -6,15 +6,17 @@ import (
 	. "github.com/expr-lang/expr/ast"
 )
 
-type sumArray struct{}
+type sumArray struct {
+	p *pipeline
+}
 
-func (*sumArray) Visit(node *Node) {
+func (v *sumArray) Visit(node *Node) {
 	if sumBuiltin, ok := (*node).(*BuiltinNode); ok &&
 		sumBuiltin.Name == "sum" &&
 		len(sumBuiltin.Arguments) == 1 {
 		if array, ok := sumBuiltin.Arguments[0].(*ArrayNode); ok &&
 			len(array.Nodes) >= 2 {
-			patchCopyType(node, sumArrayFold(array))
+			v.p.patchCopyType(node, sumArrayFold(array))
 		}
 	}
 }

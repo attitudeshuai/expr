@@ -12,9 +12,18 @@ import (
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
 type constExpr struct {
+	p       *pipeline
 	applied bool
 	err     error
 	fns     map[string]reflect.Value
+}
+
+func (c *constExpr) changed() bool {
+	return c.applied
+}
+
+func (c *constExpr) ruleErr() error {
+	return c.err
 }
 
 func (c *constExpr) Visit(node *Node) {
@@ -73,7 +82,7 @@ func (c *constExpr) Visit(node *Node) {
 					return
 				}
 				constNode := &ConstantNode{Value: value}
-				patchWithType(node, constNode)
+				c.p.patchWithType(node, constNode)
 				c.applied = true
 			}
 		}

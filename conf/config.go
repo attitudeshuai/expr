@@ -41,6 +41,19 @@ type Config struct {
 	// When enabled, the lexer treats `if`/`else` as identifiers and the parser
 	// will not parse `if` statements.
 	DisableIfOperator bool
+
+	// OptimizeRules is the declarative set of enabled optimization rules,
+	// keyed by stable rule name (see optimizer.RuleNames). A nil map means
+	// the default set with every rule enabled. In a non-nil map a true
+	// value enables a rule, while a false value or a missing entry disables
+	// it; an empty map disables all rules and is equivalent to Optimize
+	// being false.
+	OptimizeRules map[string]bool
+	// OptimizeTrace optionally holds an *optimizer.Trace which collects
+	// per-rule rewrite attribution during optimization. The field is typed
+	// as any here to avoid an import cycle; it is interpreted by the
+	// optimizer package. When nil, no attribution data is collected.
+	OptimizeTrace any
 }
 
 // CreateNew creates new config with default values.

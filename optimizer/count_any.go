@@ -8,9 +8,11 @@ import (
 // Patterns:
 //   - count(arr, pred) > 0  → any(arr, pred)
 //   - count(arr, pred) >= 1 → any(arr, pred)
-type countAny struct{}
+type countAny struct {
+	p *pipeline
+}
 
-func (*countAny) Visit(node *Node) {
+func (v *countAny) Visit(node *Node) {
 	binary, ok := (*node).(*BinaryNode)
 	if !ok {
 		return
@@ -28,7 +30,7 @@ func (*countAny) Visit(node *Node) {
 
 	if (binary.Operator == ">" && integer.Value == 0) ||
 		(binary.Operator == ">=" && integer.Value == 1) {
-		patchCopyType(node, &BuiltinNode{
+		v.p.patchCopyType(node, &BuiltinNode{
 			Name:      "any",
 			Arguments: count.Arguments,
 		})

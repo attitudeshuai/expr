@@ -8,44 +8,33 @@ import (
 	"github.com/expr-lang/expr/conf"
 )
 
+// Optimize runs the named-rule optimization chain over the tree.
+//
+// The executed rule set is taken from config.OptimizeRules; a nil set means
+// the default set of all rules. Rule names are validated up front, unknown
+// names return an error. When config.OptimizeTrace holds a *Trace, every
+// node rewrite is attributed to its rule in the trace's report; otherwise
+// no attribution data is collected.
+//
+// The signature is kept stable so existing callers need no changes: with a
+// nil config or a config without the new fields the behavior is identical
+// to the former monolithic implementation.
 func Optimize(node *Node, config *conf.Config) error {
-	Walk(node, &inArray{})
-	for limit := 1000; limit >= 0; limit-- {
-		fold := &fold{}
-		Walk(node, fold)
-		if fold.err != nil {
-			return fold.err
-		}
-		if !fold.applied {
-			break
-		}
+	if err := Validate(config); err != nil {
+		return err
 	}
-	if config != nil && len(config.ConstFns) > 0 {
-		for limit := 100; limit >= 0; limit-- {
-			constExpr := &constExpr{
-				fns: config.ConstFns,
-			}
-			Walk(node, constExpr)
-			if constExpr.err != nil {
-				return constExpr.err
-			}
-			if !constExpr.applied {
-				break
-			}
-		}
+
+	var trace *Trace
+	if config != nil {
+		trace, _ = config.OptimizeTrace.(*Trace)
 	}
-	Walk(node, &inRange{})
-	Walk(node, &filterMap{})
-	Walk(node, &filterLen{})
-	Walk(node, &filterLast{})
-	Walk(node, &filterFirst{})
-	Walk(node, &predicateCombination{})
-	Walk(node, &sumRange{})
-	Walk(node, &sumArray{})
-	Walk(node, &sumMap{})
-	Walk(node, &countAny{})
-	Walk(node, &countThreshold{})
-	return nil
+	trace.reset()
+
+	p := &pipeline{
+		config: config,
+		trace:  trace,
+	}
+	return p.run(node)
 }
 
 var (

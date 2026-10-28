@@ -13,6 +13,7 @@ import (
 	. "github.com/expr-lang/expr/checker/nature"
 	"github.com/expr-lang/expr/conf"
 	"github.com/expr-lang/expr/file"
+	"github.com/expr-lang/expr/optimizer"
 	"github.com/expr-lang/expr/parser"
 	. "github.com/expr-lang/expr/vm"
 	"github.com/expr-lang/expr/vm/runtime"
@@ -56,7 +57,10 @@ func Compile(tree *parser.Tree, config *conf.Config) (program *Program, err erro
 		case reflect.Bool:
 			c.emit(OpCast, 3)
 		}
-		if c.config.Optimize {
+		// Disabling every named optimization rule is equivalent to
+		// turning optimization off entirely, so the bytecode-level jump
+		// chain pass must be skipped as well.
+		if c.config.Optimize && !optimizer.AllRulesDisabled(c.config) {
 			c.optimize()
 		}
 	}

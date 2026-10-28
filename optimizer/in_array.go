@@ -6,9 +6,11 @@ import (
 	. "github.com/expr-lang/expr/ast"
 )
 
-type inArray struct{}
+type inArray struct {
+	p *pipeline
+}
 
-func (*inArray) Visit(node *Node) {
+func (v *inArray) Visit(node *Node) {
 	switch n := (*node).(type) {
 	case *BinaryNode:
 		if n.Operator == "in" {
@@ -34,7 +36,7 @@ func (*inArray) Visit(node *Node) {
 						}
 						m := &ConstantNode{Value: value}
 						m.SetType(reflect.TypeOf(value))
-						patchCopyType(node, &BinaryNode{
+						v.p.patchCopyType(node, &BinaryNode{
 							Operator: n.Operator,
 							Left:     n.Left,
 							Right:    m,
@@ -54,7 +56,7 @@ func (*inArray) Visit(node *Node) {
 						}
 						m := &ConstantNode{Value: value}
 						m.SetType(reflect.TypeOf(value))
-						patchCopyType(node, &BinaryNode{
+						v.p.patchCopyType(node, &BinaryNode{
 							Operator: n.Operator,
 							Left:     n.Left,
 							Right:    m,

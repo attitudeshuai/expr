@@ -11,9 +11,11 @@ import (
 //   - count(arr, pred) >= N → threshold = N (exit proves >= N is true)
 //   - count(arr, pred) < N  → threshold = N (exit proves < N is false)
 //   - count(arr, pred) <= N → threshold = N + 1 (exit proves <= N is false)
-type countThreshold struct{}
+type countThreshold struct {
+	p *pipeline
+}
 
-func (*countThreshold) Visit(node *Node) {
+func (v *countThreshold) Visit(node *Node) {
 	binary, ok := (*node).(*BinaryNode)
 	if !ok {
 		return
@@ -50,5 +52,8 @@ func (*countThreshold) Visit(node *Node) {
 
 	// Set threshold on the count node for early termination
 	// The original comparison remains unchanged
-	count.Threshold = &threshold
+	target := Node(count)
+	v.p.mutate(&target, func() {
+		count.Threshold = &threshold
+	})
 }

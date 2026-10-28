@@ -134,6 +134,66 @@ func Optimize(b bool) Option {
 	}
 }
 
+// OptimizationRules declares the exact set of optimization rules enabled
+// for the compilation. Rule names are the stable names returned by
+// optimizer.RuleNames (for example "fold" or "in_array"). Unknown names
+// make Compile fail before compilation with the list of valid names.
+//
+// Calling OptimizationRules without arguments disables every rule, which
+// is equivalent to Optimize(false). When the option is not used at all,
+// all rules are enabled by default.
+func OptimizationRules(rules ...string) Option {
+	return func(c *conf.Config) {
+		set := make(map[string]bool, len(rules))
+		for _, name := range rules {
+			set[name] = true
+		}
+		c.OptimizeRules = set
+	}
+}
+
+// DisableOptimizationRule disables the given optimization rules by name.
+// It starts from the default rule set unless OptimizationRules or
+// EnableOptimizationRule were applied earlier in the option chain.
+// Unknown names make Compile fail before compilation.
+func DisableOptimizationRule(names ...string) Option {
+	return func(c *conf.Config) {
+		if c.OptimizeRules == nil {
+			c.OptimizeRules = optimizer.DefaultRules()
+		}
+		for _, name := range names {
+			// Keep the name in the map (as false) so that unknown names
+			// are still rejected by validation instead of vanishing.
+			c.OptimizeRules[name] = false
+		}
+	}
+}
+
+// EnableOptimizationRule enables the given optimization rules by name.
+// It starts from the default rule set unless OptimizationRules or
+// DisableOptimizationRule were applied earlier in the option chain.
+// Unknown names make Compile fail before compilation.
+func EnableOptimizationRule(names ...string) Option {
+	return func(c *conf.Config) {
+		if c.OptimizeRules == nil {
+			c.OptimizeRules = optimizer.DefaultRules()
+		}
+		for _, name := range names {
+			c.OptimizeRules[name] = true
+		}
+	}
+}
+
+// WithOptimizationTrace enables rewrite attribution for the compilation.
+// After a successful Compile, per-rule hit counts, positions, before/after
+// shapes and fixpoint round information can be read from trace.Report().
+// Without this option no attribution data is collected.
+func WithOptimizationTrace(trace *optimizer.Trace) Option {
+	return func(c *conf.Config) {
+		c.OptimizeTrace = trace
+	}
+}
+
 // DisableShortCircuit turns short circuit off.
 func DisableShortCircuit() Option {
 	return func(c *conf.Config) {
@@ -235,6 +295,13 @@ func Compile(input string, ops ...Option) (*vm.Program, error) {
 		delete(config.Builtins, name)
 	}
 	config.Check()
+
+	// Validate the optimization configuration before parsing or compiling,
+	// so that unknown rule names or conflicting options fail early with the
+	// list of valid rule names.
+	if err := optimizer.Validate(config); err != nil {
+		return nil, err
+	}
 
 	tree, err := checker.ParseCheck(input, config)
 	if err != nil {

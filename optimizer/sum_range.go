@@ -4,9 +4,11 @@ import (
 	. "github.com/expr-lang/expr/ast"
 )
 
-type sumRange struct{}
+type sumRange struct {
+	p *pipeline
+}
 
-func (*sumRange) Visit(node *Node) {
+func (v *sumRange) Visit(node *Node) {
 	// Pattern 1: sum(m..n) or sum(m..n, predicate) where m and n are constant integers
 	if sumBuiltin, ok := (*node).(*BuiltinNode); ok &&
 		sumBuiltin.Name == "sum" &&
@@ -23,11 +25,11 @@ func (*sumRange) Visit(node *Node) {
 
 						if len(sumBuiltin.Arguments) == 1 {
 							// sum(m..n)
-							patchWithType(node, &IntegerNode{Value: sum})
+							v.p.patchWithType(node, &IntegerNode{Value: sum})
 						} else if len(sumBuiltin.Arguments) == 2 {
 							// sum(m..n, predicate)
 							if result, ok := applySumPredicate(sum, count, sumBuiltin.Arguments[1]); ok {
-								patchWithType(node, &IntegerNode{Value: result})
+								v.p.patchWithType(node, &IntegerNode{Value: result})
 							}
 						}
 					}
@@ -54,10 +56,10 @@ func (*sumRange) Visit(node *Node) {
 							if len(reduceBuiltin.Arguments) == 3 {
 								if initialValue, ok := reduceBuiltin.Arguments[2].(*IntegerNode); ok {
 									result := initialValue.Value + sum
-									patchWithType(node, &IntegerNode{Value: result})
+									v.p.patchWithType(node, &IntegerNode{Value: result})
 								}
 							} else {
-								patchWithType(node, &IntegerNode{Value: sum})
+								v.p.patchWithType(node, &IntegerNode{Value: sum})
 							}
 						}
 					}
