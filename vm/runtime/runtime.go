@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/expr-lang/expr/internal/deref"
+	"github.com/expr-lang/expr/vm/contract"
 )
 
 var fieldCache sync.Map
@@ -99,6 +100,10 @@ func Fetch(from, i any) any {
 type Field struct {
 	Index []int
 	Path  []string
+	// Want is the compiled shape of the field value. It is consulted by the
+	// contract gate before the field is read; it does not affect the fetch
+	// semantics itself.
+	Want *contract.Shape
 }
 
 func FetchField(from any, field *Field) any {
@@ -190,6 +195,8 @@ func fetchFromEmbeddedInterfaces(v reflect.Value, fieldName string) (any, bool) 
 type Method struct {
 	Index int
 	Name  string
+	// Want is the compiled shape of the method value.
+	Want *contract.Shape
 }
 
 func FetchMethod(from any, method *Method) any {

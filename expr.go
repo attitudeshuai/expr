@@ -40,6 +40,25 @@ func AllowUndefinedVariables() Option {
 	}
 }
 
+// ValidateEnv enables validation of the runtime environment against the
+// contract compiled from expr.Env. The contract (environment kind, effective
+// top-level names and their type shapes, including promoted embedded fields
+// and expr-tag renames) is retained by the compiled program regardless of
+// this option; with ValidateEnv the environment is checked before the
+// program executes, on every run entry point (expr.Run, expr.Eval, vm.Run,
+// (*vm.VM).Run, the debugger and the REPL). Incompatible environments fail
+// immediately with the missing and mismatched names listed, instead of
+// failing midway through execution or silently yielding nil on fast paths.
+//
+// Programs compiled without expr.Env skip validation, and programs compiled
+// without ValidateEnv keep the previous behavior verbatim. Validation can
+// also be disabled globally with vm.EnvValidationEnabled.
+func ValidateEnv() Option {
+	return func(c *conf.Config) {
+		c.EnvValidation = true
+	}
+}
+
 // Operator allows to replace a binary operator with a function.
 func Operator(operator string, fn ...string) Option {
 	return func(c *conf.Config) {

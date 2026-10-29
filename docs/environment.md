@@ -109,3 +109,49 @@ The `foobar` variable is not defined in the environment.
 By default, Expr will return an error if unknown variables are used in the expression.
 You can disable this behavior by passing [`AllowUndefinedVariables`](https://pkg.go.dev/github.com/expr-lang/expr#AllowUndefinedVariables) option to the compiler.
 :::
+
+## Environment Validation
+
+The compiler derives an environment contract from the declaration passed to
+[`expr.Env`](https://pkg.go.dev/github.com/expr-lang/expr#Env): the environment
+kind (struct or map), the effective set of top-level names — including methods,
+promoted embedded fields and `expr`-tag renames — and their type shapes. The
+contract is retained by the compiled program.
+
+By itself the contract does not change anything. Pass
+[`expr.ValidateEnv()`](https://pkg.go.dev/github.com/expr-lang/expr#ValidateEnv)
+to the compiler and the environment is checked against the contract **before the
+program executes**, on every run entry point (`expr.Run`, `expr.Eval`,
+`vm.Run`, `(*vm.VM).Run`, the debugger and the REPL):
+
+```go
+program, err := expr.Compile(code, expr.Env(Env{}), expr.ValidateEnv())
+```
+
+An incompatible environment fails immediately. The error lists all missing
+names and all names whose runtime shape differs from the declared one:
+
+```text
+env contract mismatch: missing names: Posts, tags; mismatched names: UpdatedAt (expected time.Time, got string)
+```
+
+Running a program compiled against a struct with a mapping (or vice versa) is
+rejected as an environment kind mismatch, even when the names coincide: the
+compiled program must be run against the same environment kind declared to
+`expr.Env`.
+
+With [`AllowUndefinedVariables`](https://pkg.go.dev/github.com/expr-lang/expr#AllowUndefinedVariables)
+the contract is generated in loose mode: only declared names participate, so
+undeclared names keep returning `nil` when absent. Programs compiled without
+`expr.Env` skip validation entirely. Programs compiled without
+`expr.ValidateEnv()` keep the previous behavior verbatim.
+
+Validation can also be switched off process-wide:
+
+```go
+vm.EnvValidationEnabled = false
+```
+
+The contract fingerprint returned by `program.EnvContract().Key()` is stable
+for identical environment shapes and can be added to the key of an external
+compiled-program cache.

@@ -14,10 +14,17 @@ import (
 	"github.com/expr-lang/expr/conf"
 	"github.com/expr-lang/expr/file"
 	"github.com/expr-lang/expr/internal/deref"
+	"github.com/expr-lang/expr/vm/contract"
 	"github.com/expr-lang/expr/vm/runtime"
 )
 
 const maxFnArgsBuf = 256
+
+// EnvValidationEnabled is the process-wide switch for the environment
+// contract validation. It only affects programs compiled with
+// expr.ValidateEnv(); setting it to false restores the unvalidated behavior
+// for all of them.
+var EnvValidationEnabled = true
 
 func Run(program *Program, env any) (any, error) {
 	if program == nil {
@@ -49,6 +56,7 @@ type VM struct {
 	scopePool    []Scope // Pre-allocated pool of Scope values; grows as needed but never shrinks
 	scopePoolIdx int     // Current index into scopePool for allocation
 	currScope    *Scope  // Cached pointer to the current scope (optimization)
+	guard        *contract.Guard
 }
 
 func (vm *VM) Run(program *Program, env any) (_ any, err error) {
@@ -68,6 +76,18 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			err = f.Bind(program.source)
 		}
 	}()
+
+	// Contract-first: validate the environment before any bytecode runs.
+	// This is the single chokepoint shared by expr.Run, expr.Eval, vm.Run,
+	// (*VM).Run, the debugger and the REPL.
+	if program.envValidation && EnvValidationEnabled && program.envContract != nil {
+		if err := program.envContract.Validate(env); err != nil {
+			return nil, err
+		}
+		vm.guard = contract.NewGuard(program.envContract, program.fetchExpects)
+	} else {
+		vm.guard = nil
+	}
 
 	if vm.Stack == nil {
 		vm.Stack = make([]any, 0, 2)
@@ -122,16 +142,16 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			vm.push(vm.Variables[arg])
 
 		case OpLoadConst:
-			vm.push(runtime.Fetch(env, program.Constants[arg]))
+			vm.push(vm.loadConst(env, program.Constants[arg]))
 
 		case OpLoadField:
-			vm.push(runtime.FetchField(env, program.Constants[arg].(*runtime.Field)))
+			vm.push(vm.loadField(env, program.Constants[arg].(*runtime.Field)))
 
 		case OpLoadFast:
-			vm.push(env.(map[string]any)[program.Constants[arg].(string)])
+			vm.push(vm.loadFast(env, program.Constants[arg].(string)))
 
 		case OpLoadMethod:
-			vm.push(runtime.FetchMethod(env, program.Constants[arg].(*runtime.Method)))
+			vm.push(vm.loadMethod(env, program.Constants[arg].(*runtime.Method)))
 
 		case OpLoadFunc:
 			vm.push(program.functions[arg])
@@ -139,18 +159,18 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 		case OpFetch:
 			b := vm.pop()
 			a := vm.pop()
-			vm.push(runtime.Fetch(a, b))
+			vm.push(vm.fetch(a, b))
 
 		case OpFetchField:
 			a := vm.pop()
-			vm.push(runtime.FetchField(a, program.Constants[arg].(*runtime.Field)))
+			vm.push(vm.fetchField(a, program.Constants[arg].(*runtime.Field)))
 
 		case OpLoadEnv:
 			vm.push(env)
 
 		case OpMethod:
 			a := vm.pop()
-			vm.push(runtime.FetchMethod(a, program.Constants[arg].(*runtime.Method)))
+			vm.push(vm.method(a, program.Constants[arg].(*runtime.Method)))
 
 		case OpTrue:
 			vm.push(true)
@@ -363,7 +383,10 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			from := vm.pop()
 			to := vm.pop()
 			node := vm.pop()
-			vm.push(runtime.Slice(node, from, to))
+			vm.push(vm.slice(node, from, to))
+
+		case OpFetchBuiltin:
+			vm.push(vm.fetchBuiltin(builtin.Builtins[arg].Name, vm.pop()))
 
 		case OpCall:
 			v := vm.pop()
@@ -685,6 +708,93 @@ func (vm *VM) pop() any {
 	value := vm.Stack[len(vm.Stack)-1]
 	vm.Stack = vm.Stack[:len(vm.Stack)-1]
 	return value
+}
+
+// The following wrappers route every environment value fetch site through the
+// contract gate before delegating to the unchanged runtime fetch functions.
+// With no guard (programs compiled without expr.ValidateEnv, or validation
+// globally disabled) they are a single nil check away from the previous
+// behavior, including verbatim error texts.
+
+func (vm *VM) loadConst(env any, name any) any {
+	if g := vm.guard; g != nil {
+		if n, ok := name.(string); ok {
+			g.Root(env, n)
+		}
+	}
+	return runtime.Fetch(env, name)
+}
+
+func (vm *VM) loadField(env any, field *runtime.Field) any {
+	if g := vm.guard; g != nil {
+		g.Field(env, field.Want, field.Path)
+	}
+	return runtime.FetchField(env, field)
+}
+
+func (vm *VM) loadFast(env any, name string) any {
+	if g := vm.guard; g != nil {
+		g.Root(env, name)
+	}
+	return env.(map[string]any)[name]
+}
+
+func (vm *VM) loadMethod(env any, method *runtime.Method) any {
+	if g := vm.guard; g != nil {
+		g.Method(env, method.Index, method.Name)
+	}
+	return runtime.FetchMethod(env, method)
+}
+
+func (vm *VM) fetch(from, property any) any {
+	g := vm.guard
+	if g != nil {
+		g.Receiver(vm.ip-1, from)
+	}
+	value := runtime.Fetch(from, property)
+	if g != nil {
+		g.Result(vm.ip-1, value)
+	}
+	return value
+}
+
+func (vm *VM) fetchField(from any, field *runtime.Field) any {
+	if g := vm.guard; g != nil {
+		g.Field(from, field.Want, field.Path)
+	}
+	return runtime.FetchField(from, field)
+}
+
+func (vm *VM) method(from any, method *runtime.Method) any {
+	if g := vm.guard; g != nil {
+		g.Method(from, method.Index, method.Name)
+	}
+	return runtime.FetchMethod(from, method)
+}
+
+func (vm *VM) slice(node, from, to any) any {
+	if g := vm.guard; g != nil {
+		g.Receiver(vm.ip-1, node)
+	}
+	return runtime.Slice(node, from, to)
+}
+
+// fetchBuiltin serves the first/last builtins through the contract gate. It
+// preserves their recover-swallowing semantics for out-of-range access.
+func (vm *VM) fetchBuiltin(name string, from any) (out any) {
+	if g := vm.guard; g != nil {
+		g.Receiver(vm.ip-1, from)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			out = nil
+		}
+	}()
+	index := 0
+	if name == "last" {
+		index = -1
+	}
+	return runtime.Fetch(from, index)
 }
 
 func (vm *VM) memGrow(size uint) {

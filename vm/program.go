@@ -12,6 +12,7 @@ import (
 	"github.com/expr-lang/expr/ast"
 	"github.com/expr-lang/expr/builtin"
 	"github.com/expr-lang/expr/file"
+	"github.com/expr-lang/expr/vm/contract"
 	"github.com/expr-lang/expr/vm/runtime"
 )
 
@@ -21,13 +22,44 @@ type Program struct {
 	Arguments []int
 	Constants []any
 
-	source    file.Source
-	node      ast.Node
-	locations []file.Location
-	variables int
-	functions []Function
-	debugInfo map[string]string
-	span      *Span
+	source        file.Source
+	node          ast.Node
+	locations     []file.Location
+	variables     int
+	functions     []Function
+	debugInfo     map[string]string
+	span          *Span
+	envContract   *contract.Contract
+	envValidation bool
+	fetchExpects  map[int]*contract.Expectation
+}
+
+// ProgramOption configures a Program at construction time. It is used by the
+// compiler to attach the environment contract.
+type ProgramOption func(*Program)
+
+// WithEnvContract attaches the environment contract compiled from the env
+// declaration.
+func WithEnvContract(c *contract.Contract) ProgramOption {
+	return func(p *Program) {
+		p.envContract = c
+	}
+}
+
+// WithEnvValidation marks the program as requiring environment validation at
+// run time.
+func WithEnvValidation(v bool) ProgramOption {
+	return func(p *Program) {
+		p.envValidation = v
+	}
+}
+
+// WithFetchExpects attaches per-bytecode-position fetch shape expectations
+// used by the contract gate.
+func WithFetchExpects(expects map[int]*contract.Expectation) ProgramOption {
+	return func(p *Program) {
+		p.fetchExpects = expects
+	}
 }
 
 // NewProgram returns a new Program. It's used by the compiler.
@@ -42,8 +74,9 @@ func NewProgram(
 	functions []Function,
 	debugInfo map[string]string,
 	span *Span,
+	opts ...ProgramOption,
 ) *Program {
-	return &Program{
+	p := &Program{
 		source:    source,
 		node:      node,
 		locations: locations,
@@ -55,6 +88,16 @@ func NewProgram(
 		debugInfo: debugInfo,
 		span:      span,
 	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
+}
+
+// EnvContract returns the environment contract retained by the program, or nil
+// when the program was compiled without an environment declaration.
+func (program *Program) EnvContract() *contract.Contract {
+	return program.envContract
 }
 
 // Source returns origin file.Source.
@@ -274,6 +317,9 @@ func (program *Program) DisassembleWriter(w io.Writer) {
 
 		case OpSlice:
 			code("OpSlice")
+
+		case OpFetchBuiltin:
+			builtinArg("OpFetchBuiltin")
 
 		case OpCall:
 			argument("OpCall")

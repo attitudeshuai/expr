@@ -15,6 +15,7 @@ import (
 	"github.com/expr-lang/expr/file"
 	"github.com/expr-lang/expr/parser"
 	. "github.com/expr-lang/expr/vm"
+	"github.com/expr-lang/expr/vm/contract"
 	"github.com/expr-lang/expr/vm/runtime"
 )
 
@@ -66,6 +67,21 @@ func Compile(tree *parser.Tree, config *conf.Config) (program *Program, err erro
 		span = c.spans[0]
 	}
 
+	var envContract *contract.Contract
+	if config != nil && config.EnvObject != nil {
+		envContract = conf.NewEnvContract(config.Env, c.ntCache)
+	}
+
+	options := []ProgramOption{
+		WithEnvContract(envContract),
+	}
+	if config != nil && config.EnvValidation {
+		options = append(options,
+			WithEnvValidation(true),
+			WithFetchExpects(c.fetchExpects),
+		)
+	}
+
 	program = NewProgram(
 		tree.Source,
 		tree.Node,
@@ -77,6 +93,7 @@ func Compile(tree *parser.Tree, config *conf.Config) (program *Program, err erro
 		c.functions,
 		c.debugInfo,
 		span,
+		options...,
 	)
 	return
 }
@@ -97,6 +114,34 @@ type compiler struct {
 	spans          []*Span
 	chains         [][]int
 	arguments      []int
+	fetchExpects   map[int]*contract.Expectation
+}
+
+// envValidationEnabled reports whether runtime env contract validation is
+// enabled for the compiled program.
+func (c *compiler) envValidationEnabled() bool {
+	return c.config != nil && c.config.EnvValidation
+}
+
+// setExpect records a contract fetch expectation at the bytecode position,
+// but only when env validation is enabled. ip is the 1-based position
+// returned by emit/emitLocation; expectations are keyed by the zero-based
+// opcode index used by the VM.
+func (c *compiler) setExpect(ip int, receiver, result ast.Node) {
+	if !c.envValidationEnabled() {
+		return
+	}
+	if c.fetchExpects == nil {
+		c.fetchExpects = make(map[int]*contract.Expectation)
+	}
+	e := &contract.Expectation{}
+	if receiver != nil {
+		e.Receiver = conf.NewShape(*receiver.Nature(), c.ntCache)
+	}
+	if result != nil {
+		e.Result = conf.NewShape(*result.Nature(), c.ntCache)
+	}
+	c.fetchExpects[ip-1] = e
 }
 
 type scope struct {
@@ -318,11 +363,13 @@ func (c *compiler) IdentifierNode(node *ast.IdentifierNode) {
 		c.emit(OpLoadField, c.addConstant(&runtime.Field{
 			Index: index,
 			Path:  []string{name},
+			Want:  conf.NewShape(*node.Nature(), c.ntCache),
 		}))
 	} else if ok, index, name := checker.MethodIndex(c.ntCache, env, node); ok {
 		c.emit(OpLoadMethod, c.addConstant(&runtime.Method{
 			Name:  name,
 			Index: index,
+			Want:  conf.NewShape(*node.Nature(), c.ntCache),
 		}))
 	} else {
 		c.emit(OpLoadConst, c.addConstant(node.Value))
@@ -690,6 +737,7 @@ func (c *compiler) MemberNode(node *ast.MemberNode) {
 		c.emit(OpMethod, c.addConstant(&runtime.Method{
 			Name:  name,
 			Index: index,
+			Want:  conf.NewShape(*node.Nature(), c.ntCache),
 		}))
 		return
 	}
@@ -698,6 +746,7 @@ func (c *compiler) MemberNode(node *ast.MemberNode) {
 
 	ok, index, nodeName := checker.FieldIndex(c.ntCache, env, node)
 	path := []string{nodeName}
+	want := conf.NewShape(*node.Nature(), c.ntCache)
 
 	if ok {
 		op = OpFetchField
@@ -707,7 +756,7 @@ func (c *compiler) MemberNode(node *ast.MemberNode) {
 					index = append(identIndex, index...)
 					path = append([]string{name}, path...)
 					c.emitLocation(ident.Location(), OpLoadField, c.addConstant(
-						&runtime.Field{Index: index, Path: path},
+						&runtime.Field{Index: index, Path: path, Want: want},
 					))
 					return
 				}
@@ -750,10 +799,11 @@ func (c *compiler) MemberNode(node *ast.MemberNode) {
 		if deref {
 			c.derefInNeeded(node.Property)
 		}
-		c.emit(OpFetch)
+		ip := c.emit(OpFetch)
+		c.setExpect(ip, node.Node, node)
 	} else {
 		c.emitLocation(node.Location(), op, c.addConstant(
-			&runtime.Field{Index: index, Path: path},
+			&runtime.Field{Index: index, Path: path, Want: want},
 		))
 	}
 }
@@ -772,7 +822,8 @@ func (c *compiler) SliceNode(node *ast.SliceNode) {
 	} else {
 		c.emitPush(0)
 	}
-	c.emit(OpSlice)
+	ip := c.emit(OpSlice)
+	c.setExpect(ip, node.Node, nil)
 }
 
 func (c *compiler) CallNode(node *ast.CallNode) {
@@ -1162,6 +1213,17 @@ func (c *compiler) BuiltinNode(node *ast.BuiltinNode) {
 					}
 				}
 			}
+		}
+
+		// With env validation enabled, first/last fetch the boundary
+		// element through the contract gate, so shape mismatches fail
+		// instead of being silently swallowed by the builtin recover().
+		if c.envValidationEnabled() && (node.Name == "first" || node.Name == "last") {
+			ip := c.emit(OpFetchBuiltin, id)
+			if len(node.Arguments) > 0 {
+				c.setExpect(ip, node.Arguments[0], nil)
+			}
+			return
 		}
 
 		if f.Fast != nil {
