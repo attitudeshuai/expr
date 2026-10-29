@@ -3,12 +3,23 @@ package vm
 import (
 	"reflect"
 	"time"
+
+	"github.com/expr-lang/expr/builtin"
 )
 
 type (
 	Function     = func(params ...any) (any, error)
 	SafeFunction = func(params ...any) (any, uint, error)
 )
+
+// registeredFunction pairs a compiled program function with its declared
+// allocation metric. It is pushed by OpLoadFunc only for functions that
+// declare a metric, so OpCallN can account the result; plain Function values
+// from the environment keep flowing through OpCallN unchanged.
+type registeredFunction struct {
+	fn     Function
+	memory builtin.MemoryFunc
+}
 
 var (
 	errorType = reflect.TypeOf((*error)(nil)).Elem()

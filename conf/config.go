@@ -30,6 +30,10 @@ type Config struct {
 	ShortCircuit bool
 	Profile      bool
 	MaxNodes     uint
+	// MemoryBudget is the maximum accounted runtime memory usage of a single
+	// VM run of programs compiled with this config. Zero means the runtime
+	// default (conf.DefaultMemoryBudget) is used.
+	MemoryBudget uint
 	ConstFns     map[string]reflect.Value
 	Visitors     []ast.Visitor
 	Functions    FunctionsTable

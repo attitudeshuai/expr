@@ -42,7 +42,7 @@ type VM struct {
 	Variables    []any
 	MemoryBudget uint
 	ip           int
-	memory       uint
+	mem          memoryAllocator
 	debug        bool
 	step         chan struct{}
 	curr         chan int
@@ -84,10 +84,14 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 	if len(vm.Variables) < program.variables {
 		vm.Variables = make([]any, program.variables)
 	}
-	if vm.MemoryBudget == 0 {
-		vm.MemoryBudget = conf.DefaultMemoryBudget
+	budget := vm.MemoryBudget
+	if budget == 0 {
+		budget = program.memoryBudget
 	}
-	vm.memory = 0
+	if budget == 0 {
+		budget = conf.DefaultMemoryBudget
+	}
+	vm.mem.reset(budget)
 	vm.ip = 0
 
 	var fnArgsBuf []any
@@ -134,7 +138,12 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			vm.push(runtime.FetchMethod(env, program.Constants[arg].(*runtime.Method)))
 
 		case OpLoadFunc:
-			vm.push(program.functions[arg])
+			fn := program.functions[arg]
+			if memory := program.memoryAt(arg); memory != nil {
+				vm.push(&registeredFunction{fn: fn, memory: memory})
+			} else {
+				vm.push(fn)
+			}
 
 		case OpFetch:
 			b := vm.pop()
@@ -261,6 +270,11 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 		case OpAdd:
 			b := vm.pop()
 			a := vm.pop()
+			if sa, ok := a.(string); ok {
+				if sb, ok := b.(string); ok {
+					vm.mem.grow(MemoryString, uint(len(sa)+len(sb)))
+				}
+			}
 			vm.push(runtime.Add(a, b))
 
 		case OpSubtract:
@@ -297,7 +311,7 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			if size <= 0 {
 				size = 0
 			}
-			vm.memGrow(uint(size))
+			vm.mem.grow(MemoryRange, uint(size))
 			vm.push(runtime.MakeRange(min, max))
 
 		case OpMatches:
@@ -363,7 +377,9 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			from := vm.pop()
 			to := vm.pop()
 			node := vm.pop()
-			vm.push(runtime.Slice(node, from, to))
+			result := runtime.Slice(node, from, to)
+			vm.mem.grow(MemorySlice, measureMemory(result))
+			vm.push(result)
 
 		case OpCall:
 			v := vm.pop()
@@ -406,13 +422,16 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			if len(out) == 2 && out[1].Type() == errorType && !out[1].IsNil() {
 				panic(out[1].Interface().(error))
 			}
-			vm.push(out[0].Interface())
+			result := out[0].Interface()
+			vm.chargeFunctionResult(nil, nil, result)
+			vm.push(result)
 
 		case OpCall0:
 			out, err := program.functions[arg]()
 			if err != nil {
 				panic(err)
 			}
+			vm.chargeFunctionResult(program.memoryAt(arg), nil, out)
 			vm.push(out)
 
 		case OpCall1:
@@ -422,6 +441,7 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			if err != nil {
 				panic(err)
 			}
+			vm.chargeFunctionResult(program.memoryAt(arg), args, out)
 			vm.push(out)
 
 		case OpCall2:
@@ -431,6 +451,7 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			if err != nil {
 				panic(err)
 			}
+			vm.chargeFunctionResult(program.memoryAt(arg), args, out)
 			vm.push(out)
 
 		case OpCall3:
@@ -440,23 +461,27 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			if err != nil {
 				panic(err)
 			}
+			vm.chargeFunctionResult(program.memoryAt(arg), args, out)
 			vm.push(out)
 
 		case OpCallN:
-			fn := vm.pop().(Function)
+			fn, memory := vm.popFunction()
 			var args []any
 			args, fnArgsBuf = vm.getArgsForFunc(fnArgsBuf, program, arg)
 			out, err := fn(args...)
 			if err != nil {
 				panic(err)
 			}
+			vm.chargeFunctionResult(memory, args, out)
 			vm.push(out)
 
 		case OpCallFast:
 			fn := vm.pop().(func(...any) any)
 			var args []any
 			args, fnArgsBuf = vm.getArgsForFunc(fnArgsBuf, program, arg)
-			vm.push(fn(args...))
+			out := fn(args...)
+			vm.chargeFunctionResult(nil, args, out)
+			vm.push(out)
 
 		case OpCallSafe:
 			fn := vm.pop().(SafeFunction)
@@ -466,18 +491,24 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			if err != nil {
 				panic(err)
 			}
-			vm.memGrow(mem)
+			vm.mem.grow(MemoryFunction, mem)
 			vm.push(out)
 
 		case OpCallTyped:
-			vm.push(vm.call(vm.pop(), arg))
+			result := vm.call(vm.pop(), arg)
+			vm.chargeFunctionResult(nil, nil, result)
+			vm.push(result)
 
 		case OpCallBuiltin1:
-			vm.push(builtin.Builtins[arg].Fast(vm.pop()))
+			f := builtin.Builtins[arg]
+			in := vm.pop()
+			out := f.Fast(in)
+			vm.chargeFunctionResult(f.Memory, []any{in}, out)
+			vm.push(out)
 
 		case OpArray:
 			size := vm.pop().(int)
-			vm.memGrow(uint(size))
+			vm.mem.grow(MemoryArray, uint(size))
 			array := make([]any, size)
 			for i := size - 1; i >= 0; i-- {
 				array[i] = vm.pop()
@@ -486,7 +517,7 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 
 		case OpMap:
 			size := vm.pop().(int)
-			vm.memGrow(uint(size))
+			vm.mem.grow(MemoryMap, uint(size))
 			m := make(map[string]any)
 			for i := size - 1; i >= 0; i-- {
 				value := vm.pop()
@@ -566,6 +597,7 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 				default:
 					panic("unknown order, use asc or desc")
 				}
+				vm.mem.grow(MemorySort, 2*uint(scope.Len))
 				vm.push(&runtime.SortBy{
 					Desc:   desc,
 					Array:  make([]any, 0, scope.Len),
@@ -581,6 +613,7 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			if key != nil && !reflect.TypeOf(key).Comparable() {
 				panic(fmt.Sprintf("cannot use %T as a key for groupBy: type is not comparable", key))
 			}
+			vm.mem.grow(MemoryGroup, 1)
 			scope.Acc.(groupBy)[key] = append(scope.Acc.(groupBy)[key], scope.Item())
 
 		case OpSortBy:
@@ -594,7 +627,7 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			scope := vm.currScope
 			sortable := scope.Acc.(*runtime.SortBy)
 			sort.Sort(sortable)
-			vm.memGrow(uint(scope.Len))
+			vm.mem.grow(MemorySort, uint(scope.Len))
 			vm.push(sortable.Array)
 
 		case OpProfileStart:
@@ -687,15 +720,22 @@ func (vm *VM) pop() any {
 	return value
 }
 
-func (vm *VM) memGrow(size uint) {
-	vm.memory += size
-	if vm.memory >= vm.MemoryBudget {
-		panic("memory budget exceeded")
-	}
-}
-
 func (vm *VM) scope() *Scope {
 	return vm.Scopes[len(vm.Scopes)-1]
+}
+
+// popFunction pops a callable pushed for OpCallN: either a plain Function
+// value (for example one coming from the environment) or a registeredFunction
+// carrying the allocation metric declared at compile time.
+func (vm *VM) popFunction() (Function, builtin.MemoryFunc) {
+	v := vm.pop()
+	if fn, ok := v.(Function); ok {
+		return fn, nil
+	}
+	if registered, ok := v.(*registeredFunction); ok {
+		return registered.fn, registered.memory
+	}
+	panic(fmt.Sprintf("invalid operation: cannot call non-function of type %T", v))
 }
 
 // allocScope returns a pointer to a Scope from the pool, growing the pool if needed.

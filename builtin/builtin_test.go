@@ -377,6 +377,44 @@ func TestBuiltin_memory_limits(t *testing.T) {
 	}
 }
 
+func TestDefaultMemoryFunc(t *testing.T) {
+	tests := []struct {
+		name   string
+		result any
+		want   uint
+	}{
+		{"nil", nil, 0},
+		{"int", 42, 0},
+		{"bool", true, 0},
+		{"string", "hello", 5},
+		{"empty string", "", 0},
+		{"[]any", make([]any, 3), 3},
+		{"[]int", []int{1, 2, 3, 4}, 4},
+		{"map", map[string]any{"a": 1, "b": 2}, 2},
+		{"[]string", []string{"a", "bb"}, 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, builtin.DefaultMemoryFunc(nil, tt.result))
+		})
+	}
+}
+
+func TestBuiltin_median_memory_metric(t *testing.T) {
+	// median returns a scalar, so only its explicitly declared metric can
+	// account for the internal float64 slice built from the input.
+	env := map[string]any{"arr": make([]int, 1000)}
+	program, err := expr.Compile(`median(arr)`, expr.Env(env), expr.MemoryBudget(500))
+	require.NoError(t, err)
+
+	_, err = expr.Run(program, env)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "memory budget exceeded")
+	assert.Contains(t, err.Error(), "function allocation 1000")
+	assert.Contains(t, err.Error(), "limit 500")
+}
+
 func TestBuiltin_allow_builtins_override(t *testing.T) {
 	t.Run("via env var", func(t *testing.T) {
 		for _, name := range builtin.Names {
@@ -874,10 +912,10 @@ func TestAbs_UnsignedIntegers(t *testing.T) {
 	// Test that abs() correctly handles unsigned integers
 	// Unsigned integers are always non-negative, so abs() should return them unchanged
 	tests := []struct {
-		name  string
-		env   map[string]any
-		expr  string
-		want  any
+		name string
+		env  map[string]any
+		expr string
+		want any
 	}{
 		{"uint", map[string]any{"x": uint(42)}, "abs(x)", uint(42)},
 		{"uint8", map[string]any{"x": uint8(42)}, "abs(x)", uint8(42)},

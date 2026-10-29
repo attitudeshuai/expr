@@ -3029,3 +3029,150 @@ func TestBytesLiteral_errors(t *testing.T) {
 		})
 	}
 }
+
+func TestCompile_MemoryBudget(t *testing.T) {
+	tests := []struct {
+		name        string
+		code        string
+		budget      uint
+		contains    []string
+		expectError bool
+	}{
+		{
+			name:        "groupBy oversized array blocked",
+			code:        `groupBy(1..1000, # % 10)`,
+			budget:      1500,
+			expectError: true,
+			contains:    []string{"memory budget exceeded", "group", "category used 500", "total used 1500", "limit 1500"},
+		},
+		{
+			name:        "loop string concatenation blocked",
+			code:        `reduce(1..1000, #acc + "x", "")`,
+			budget:      1200,
+			expectError: true,
+			contains:    []string{"memory budget exceeded", "string", "category used 210", "total used 1210", "limit 1200"},
+		},
+		{
+			name:        "builtin returning oversized result blocked",
+			code:        `split(repeat("a,", 500), ",")`,
+			budget:      1200,
+			expectError: true,
+			contains:    []string{"memory budget exceeded", "function", "allocation 501", "limit 1200"},
+		},
+		{
+			name:        "within budget allowed",
+			code:        `map(1..10, #)`,
+			budget:      1500,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			program, err := expr.Compile(tt.code, expr.MemoryBudget(tt.budget))
+			require.NoError(t, err)
+
+			// A fresh VM with no explicit field (package-level Run) must use
+			// the budget carried by the compiled program.
+			_, err = expr.Run(program, nil)
+			if tt.expectError {
+				require.Error(t, err)
+				for _, fragment := range tt.contains {
+					assert.Contains(t, err.Error(), fragment)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestCompile_MemoryBudget_DefaultAndOverride(t *testing.T) {
+	// Without the option the default budget applies: a program allowed under
+	// a small explicit budget must still run under the default 1e6 budget.
+	program, err := expr.Compile(`groupBy(1..1000, # % 10)`)
+	require.NoError(t, err)
+	_, err = expr.Run(program, nil)
+	require.NoError(t, err)
+
+	// An explicit, non-zero VM field overrides the budget carried by the
+	// program.
+	small, err := expr.Compile(`groupBy(1..1000, # % 10)`, expr.MemoryBudget(1500))
+	require.NoError(t, err)
+	overriding := vm.VM{MemoryBudget: 100000}
+	_, err = overriding.Run(small, nil)
+	require.NoError(t, err)
+
+	// The zero option value keeps the default rather than disabling accounting.
+	zero, err := expr.Compile(`1..10000000`, expr.MemoryBudget(0))
+	require.NoError(t, err)
+	_, err = expr.Run(zero, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "memory budget exceeded")
+}
+
+func TestCompile_MemoryBudget_BytecodeIdentity(t *testing.T) {
+	code := `reduce(map(1..10, #), #acc + #, 0)`
+
+	without, err := expr.Compile(code)
+	require.NoError(t, err)
+	with, err := expr.Compile(code, expr.MemoryBudget(42))
+	require.NoError(t, err)
+
+	assert.True(t, reflect.DeepEqual(without.Bytecode, with.Bytecode),
+		"Bytecode must be byte-identical regardless of the memory budget option")
+	assert.True(t, reflect.DeepEqual(without.Arguments, with.Arguments),
+		"Arguments must be byte-identical regardless of the memory budget option")
+}
+
+func TestFunctionWithMemory_Metric(t *testing.T) {
+	// A custom function returning a scalar but allocating proportionally to
+	// its input: only a declared metric can account the allocation.
+	stats := expr.FunctionWithMemory(
+		"stats",
+		func(params ...any) (any, error) {
+			return 42, nil
+		},
+		func(args []any, _ any) uint {
+			return uint(reflect.ValueOf(args[0]).Len())
+		},
+		new(func([]any) int),
+	)
+
+	program, err := expr.Compile(`stats(map(1..100, #))`, stats, expr.MemoryBudget(250))
+	require.NoError(t, err)
+	_, err = expr.Run(program, nil)
+	require.Error(t, err)
+	// Costs: range 100, array 100, stats metric 100 -> total 300 at the call.
+	assert.Contains(t, err.Error(), "memory budget exceeded")
+	assert.Contains(t, err.Error(), "function allocation 100")
+	assert.Contains(t, err.Error(), "total used 300")
+	assert.Contains(t, err.Error(), "limit 250")
+
+	// Same expression comfortably fits a larger budget.
+	allowed, err := expr.Compile(`stats(map(1..100, #))`, stats, expr.MemoryBudget(10000))
+	require.NoError(t, err)
+	out, err := expr.Run(allowed, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 42, out)
+}
+
+func TestFunction_DefaultMemoryMetric(t *testing.T) {
+	// A custom function without a declared metric returning a large slice is
+	// accounted by the default result metric.
+	bigSlice := expr.Function(
+		"bigSlice",
+		func(params ...any) (any, error) {
+			return make([]any, 1000), nil
+		},
+		new(func() []any),
+	)
+
+	program, err := expr.Compile(`bigSlice()`, bigSlice, expr.MemoryBudget(500))
+	require.NoError(t, err)
+	_, err = expr.Run(program, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "memory budget exceeded")
+	assert.Contains(t, err.Error(), "function allocation 1000")
+	assert.Contains(t, err.Error(), "limit 500")
+}

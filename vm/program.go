@@ -21,13 +21,36 @@ type Program struct {
 	Arguments []int
 	Constants []any
 
-	source    file.Source
-	node      ast.Node
-	locations []file.Location
-	variables int
-	functions []Function
-	debugInfo map[string]string
-	span      *Span
+	source         file.Source
+	node           ast.Node
+	locations      []file.Location
+	variables      int
+	functions      []Function
+	functionMemory []builtin.MemoryFunc
+	memoryBudget   uint
+	debugInfo      map[string]string
+	span           *Span
+}
+
+// ProgramOption configures optional, non-bytecode metadata of a Program.
+// Options never affect Bytecode or Arguments.
+type ProgramOption func(*Program)
+
+// WithMemoryBudget carries the memory limit declared in the compile
+// configuration into the compiled Program. A zero budget means the runtime
+// default applies.
+func WithMemoryBudget(budget uint) ProgramOption {
+	return func(program *Program) {
+		program.memoryBudget = budget
+	}
+}
+
+// WithFunctionMemory attaches allocation metrics aligned by index with the
+// program's functions slice. A nil entry means the default result metric.
+func WithFunctionMemory(memory []builtin.MemoryFunc) ProgramOption {
+	return func(program *Program) {
+		program.functionMemory = memory
+	}
 }
 
 // NewProgram returns a new Program. It's used by the compiler.
@@ -42,8 +65,9 @@ func NewProgram(
 	functions []Function,
 	debugInfo map[string]string,
 	span *Span,
+	opts ...ProgramOption,
 ) *Program {
-	return &Program{
+	program := &Program{
 		source:    source,
 		node:      node,
 		locations: locations,
@@ -55,6 +79,20 @@ func NewProgram(
 		debugInfo: debugInfo,
 		span:      span,
 	}
+	for _, opt := range opts {
+		opt(program)
+	}
+	return program
+}
+
+// memoryAt returns the allocation metric registered for the function at index
+// i, or nil when no metric is carried (programs compiled without metrics, or
+// the default result metric).
+func (program *Program) memoryAt(i int) builtin.MemoryFunc {
+	if i < len(program.functionMemory) {
+		return program.functionMemory[i]
+	}
+	return nil
 }
 
 // Source returns origin file.Source.

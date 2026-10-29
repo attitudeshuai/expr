@@ -170,6 +170,33 @@ func Function(name string, fn func(params ...any) (any, error), types ...any) Op
 	}
 }
 
+// FunctionWithMemory works like Function but also registers an allocation
+// metric for the function. The metric receives the call arguments and result
+// and reports the accounted allocation size; use it when the allocation done
+// by the function is not visible from the result (the default metric measures
+// result strings by length and result slices/maps/arrays by element count).
+func FunctionWithMemory(name string, fn func(params ...any) (any, error), memory builtin.MemoryFunc, types ...any) Option {
+	return func(c *conf.Config) {
+		ts := make([]reflect.Type, len(types))
+		for i, t := range types {
+			t := reflect.TypeOf(t)
+			if t.Kind() == reflect.Ptr {
+				t = t.Elem()
+			}
+			if t.Kind() != reflect.Func {
+				panic(fmt.Sprintf("expr: type of %s is not a function", name))
+			}
+			ts[i] = t
+		}
+		c.Functions[name] = &builtin.Function{
+			Name:   name,
+			Func:   fn,
+			Memory: memory,
+			Types:  ts,
+		}
+	}
+}
+
 // DisableAllBuiltins disables all builtins.
 func DisableAllBuiltins() Option {
 	return func(c *conf.Config) {
@@ -222,6 +249,17 @@ func Timezone(name string) Option {
 func MaxNodes(n uint) Option {
 	return func(c *conf.Config) {
 		c.MaxNodes = n
+	}
+}
+
+// MemoryBudget sets the maximum accounted runtime memory usage of programs
+// compiled with this option. The limit is carried by the compiled program and
+// applies to every run that does not set vm.VM.MemoryBudget explicitly.
+// By default, the limit is conf.DefaultMemoryBudget (1e6).
+// Setting it to 0 keeps the default; memory accounting cannot be disabled.
+func MemoryBudget(budget uint) Option {
+	return func(c *conf.Config) {
+		c.MemoryBudget = budget
 	}
 }
 

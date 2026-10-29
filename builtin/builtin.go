@@ -429,6 +429,15 @@ var Builtins = []*Function{
 			}
 			return 0.0, nil
 		},
+		// median flattens its inputs into an internal float64 slice for
+		// sorting; that allocation is not visible in its scalar result.
+		Memory: func(args []any, _ any) uint {
+			var size uint
+			for _, arg := range args {
+				size += DefaultMemoryFunc(nil, arg)
+			}
+			return size
+		},
 		Validate: func(args []reflect.Type) (reflect.Type, error) {
 			return validateAggregateFunc("median", args)
 		},

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1558,4 +1560,172 @@ func TestVM_OpCall_InvalidNumberOfArguments_Variadic(t *testing.T) {
 	_, err = expr.Run(program, env)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid number of arguments")
+}
+
+func TestVM_MemoryAllocatorCategories(t *testing.T) {
+	tests := []struct {
+		name        string
+		expr        string
+		memBudget   uint
+		expectError string
+		contains    []string
+	}{
+		{
+			name:        "range",
+			expr:        "1..1000",
+			memBudget:   500,
+			expectError: "memory budget exceeded",
+			contains:    []string{"range allocation 1000", "category used 1000", "total used 1000", "limit 500"},
+		},
+		{
+			name:        "array",
+			expr:        "map(1..1000, #)",
+			memBudget:   1500,
+			expectError: "memory budget exceeded",
+			contains:    []string{"array allocation 1000", "category used 1000", "total used 2000", "limit 1500"},
+		},
+		{
+			name:        "group accumulation",
+			expr:        "groupBy(1..1000, # % 10)",
+			memBudget:   1500,
+			expectError: "memory budget exceeded",
+			contains:    []string{"group allocation 1", "category used 500", "total used 1500", "limit 1500", "(1:1)"},
+		},
+		{
+			name:        "loop string concatenation",
+			expr:        `reduce(1..1000, #acc + "x", "")`,
+			memBudget:   1200,
+			expectError: "memory budget exceeded",
+			contains:    []string{"string allocation 20", "category used 210", "total used 1210", "limit 1200"},
+		},
+		{
+			name:        "slice",
+			expr:        "(1..1000)[100:900]",
+			memBudget:   1500,
+			expectError: "memory budget exceeded",
+			contains:    []string{"slice allocation 800", "category used 800", "total used 1800", "limit 1500"},
+		},
+		{
+			name:        "sort intermediate collection",
+			expr:        "sortBy(1..1000, #)[0]",
+			memBudget:   1500,
+			expectError: "memory budget exceeded",
+			contains:    []string{"sort allocation 2000", "category used 2000", "total used 3000", "limit 1500"},
+		},
+		{
+			name:        "safe function self-reported usage",
+			expr:        `repeat("ab", 100)`,
+			memBudget:   100,
+			expectError: "memory budget exceeded",
+			contains:    []string{"function allocation 200", "category used 200", "total used 200", "limit 100"},
+		},
+		{
+			name:        "plain function default result metric",
+			expr:        `split(repeat("a,", 500), ",")`,
+			memBudget:   1200,
+			expectError: "memory budget exceeded",
+			contains:    []string{"function allocation 501", "category used 1501", "total used 1501", "limit 1200"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node, err := parser.Parse(tt.expr)
+			require.NoError(t, err)
+
+			program, err := compiler.Compile(node, nil)
+			require.NoError(t, err)
+
+			testVM := vm.VM{MemoryBudget: tt.memBudget}
+			_, err = testVM.Run(program, nil)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.expectError)
+			for _, fragment := range tt.contains {
+				require.Contains(t, err.Error(), fragment)
+			}
+		})
+	}
+}
+
+func TestVM_MemoryAllocatorUsageSnapshot(t *testing.T) {
+	node, err := parser.Parse(`map(1..10, #)`)
+	require.NoError(t, err)
+
+	program, err := compiler.Compile(node, nil)
+	require.NoError(t, err)
+
+	testVM := vm.VM{}
+
+	// Before the first run counters are zero.
+	usage := testVM.MemoryUsage()
+	require.Equal(t, uint(0), usage.Used)
+	require.Equal(t, uint(0), usage.Limit)
+
+	// A successful run exposes the per-category breakdown: range and array of
+	// ten elements each.
+	_, err = testVM.Run(program, nil)
+	require.NoError(t, err)
+	usage = testVM.MemoryUsage()
+	require.Equal(t, conf.DefaultMemoryBudget, usage.Limit)
+	require.Equal(t, uint(20), usage.Used)
+	require.Equal(t, uint(10), usage.Categories[vm.MemoryRange])
+	require.Equal(t, uint(10), usage.Categories[vm.MemoryArray])
+	// A zero-valued field must not be overwritten with the resolved default.
+	require.Equal(t, uint(0), testVM.MemoryBudget)
+
+	// Reusing the VM starts accounting from zero again.
+	_, err = testVM.Run(program, nil)
+	require.NoError(t, err)
+	usage = testVM.MemoryUsage()
+	require.Equal(t, uint(20), usage.Used)
+	require.Equal(t, uint(10), usage.Categories[vm.MemoryRange])
+	require.Equal(t, uint(10), usage.Categories[vm.MemoryArray])
+}
+
+func TestVM_MemoryAllocatorConcurrentPrograms(t *testing.T) {
+	// map(1..100, #) accounts for 100 range units and 100 array units (200).
+	program, err := expr.Compile(`map(1..100, #)`)
+	require.NoError(t, err)
+
+	const goroutines = 32
+	const iterations = 50
+
+	var wg sync.WaitGroup
+	var ok, failed int64
+	for g := 0; g < goroutines; g++ {
+		// Half the VMs allow the expression, half do not.
+		budget := uint(1000)
+		if g%2 == 1 {
+			budget = 150
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			instance := vm.VM{MemoryBudget: budget}
+			for i := 0; i < iterations; i++ {
+				_, err := instance.Run(program, nil)
+				if budget == 1000 {
+					if err == nil {
+						atomic.AddInt64(&ok, 1)
+					}
+				} else {
+					if err != nil && strings.Contains(err.Error(), "memory budget exceeded") {
+						atomic.AddInt64(&failed, 1)
+					}
+				}
+				// A reused VM must always start from zero: a successful run
+				// must end with exactly 200 accounted units.
+				if budget == 1000 {
+					usage := instance.MemoryUsage()
+					if usage.Used != 200 {
+						t.Errorf("cross-talk detected: expected used 200, got %d", usage.Used)
+					}
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	require.Equal(t, int64((goroutines/2)*iterations), ok)
+	require.Equal(t, int64((goroutines/2)*iterations), failed)
 }

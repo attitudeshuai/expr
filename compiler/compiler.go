@@ -66,6 +66,11 @@ func Compile(tree *parser.Tree, config *conf.Config) (program *Program, err erro
 		span = c.spans[0]
 	}
 
+	var memoryBudget uint
+	if c.config != nil {
+		memoryBudget = c.config.MemoryBudget
+	}
+
 	program = NewProgram(
 		tree.Source,
 		tree.Node,
@@ -77,6 +82,8 @@ func Compile(tree *parser.Tree, config *conf.Config) (program *Program, err erro
 		c.functions,
 		c.debugInfo,
 		span,
+		WithMemoryBudget(memoryBudget),
+		WithFunctionMemory(c.functionMemory),
 	)
 	return
 }
@@ -91,6 +98,7 @@ type compiler struct {
 	constants      []any
 	constantsIndex map[any]int
 	functions      []Function
+	functionMemory []builtin.MemoryFunc
 	functionsIndex map[string]int
 	debugInfo      map[string]string
 	nodes          []ast.Node
@@ -176,21 +184,22 @@ func (c *compiler) addVariable(name string) int {
 func (c *compiler) emitFunction(fn *builtin.Function, argsLen int) {
 	switch argsLen {
 	case 0:
-		c.emit(OpCall0, c.addFunction(fn.Name, fn.Func))
+		c.emit(OpCall0, c.addFunction(fn.Name, fn.Func, fn.Memory))
 	case 1:
-		c.emit(OpCall1, c.addFunction(fn.Name, fn.Func))
+		c.emit(OpCall1, c.addFunction(fn.Name, fn.Func, fn.Memory))
 	case 2:
-		c.emit(OpCall2, c.addFunction(fn.Name, fn.Func))
+		c.emit(OpCall2, c.addFunction(fn.Name, fn.Func, fn.Memory))
 	case 3:
-		c.emit(OpCall3, c.addFunction(fn.Name, fn.Func))
+		c.emit(OpCall3, c.addFunction(fn.Name, fn.Func, fn.Memory))
 	default:
-		c.emit(OpLoadFunc, c.addFunction(fn.Name, fn.Func))
+		c.emit(OpLoadFunc, c.addFunction(fn.Name, fn.Func, fn.Memory))
 		c.emit(OpCallN, argsLen)
 	}
 }
 
 // addFunction adds builtin.Function.Func to the program.functions and returns its index.
-func (c *compiler) addFunction(name string, fn Function) int {
+// The memory metric is kept in an index-aligned slice carried by the program.
+func (c *compiler) addFunction(name string, fn Function, memory builtin.MemoryFunc) int {
 	if fn == nil {
 		panic("function is nil")
 	}
@@ -199,6 +208,7 @@ func (c *compiler) addFunction(name string, fn Function) int {
 	}
 	p := len(c.functions)
 	c.functions = append(c.functions, fn)
+	c.functionMemory = append(c.functionMemory, memory)
 	c.functionsIndex[name] = p
 	c.debugInfo[fmt.Sprintf("func_%d", p)] = name
 	return p
