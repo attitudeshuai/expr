@@ -943,12 +943,11 @@ func (v *Checker) builtinNode(node *ast.BuiltinNode) Nature {
 
 	}
 
-	if id, ok := builtin.Index[node.Name]; ok {
-		switch node.Name {
-		case "get":
+	if fn, ok := v.config.Builtins[node.Name]; ok {
+		if node.Name == "get" {
 			return v.checkBuiltinGet(node)
 		}
-		return v.checkFunction(builtin.Builtins[id], node, node.Arguments)
+		return v.checkFunction(fn, node, node.Arguments)
 	}
 
 	return v.error(node, "unknown builtin %v", node.Name)

@@ -15,98 +15,253 @@ import (
 )
 
 var (
-	Index map[string]int
-	Names []string
-
 	// MaxDepth limits the recursion depth for nested structures.
 	MaxDepth      = 10000
 	ErrorMaxDepth = errors.New("recursion depth exceeded")
 )
-
-func init() {
-	Index = make(map[string]int)
-	Names = make([]string, len(Builtins))
-	for i, fn := range Builtins {
-		Index[fn.Name] = i
-		Names[i] = fn.Name
-	}
-}
 
 var Builtins = []*Function{
 	{
 		Name:      "all",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) bool)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Returns **true** if all elements satisfies the [predicate](#predicate).\nIf the array is empty, returns **true**.",
+		Signature:   "all(array, predicate)",
+		Examples: []string{
+			`all([1, 2, 3], # > 0) == true`,
+		},
 	},
 	{
 		Name:      "none",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) bool)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Returns **true** if _all elements does not_ satisfy the [predicate](#predicate).\nIf the array is empty, returns **true**.",
+		Signature:   "none(array, predicate)",
+		Examples: []string{
+			`none([1, 2, 3], # > 3) == true`,
+		},
 	},
 	{
 		Name:      "any",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) bool)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Returns **true** if any elements satisfies the [predicate](#predicate).\nIf the array is empty, returns **false**.",
+		Signature:   "any(array, predicate)",
+		Examples: []string{
+			`any([1, 2, 3], # > 2) == true`,
+		},
 	},
 	{
 		Name:      "one",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) bool)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Returns **true** if _exactly one_ element satisfies the [predicate](#predicate).\nIf the array is empty, returns **false**.",
+		Signature:   "one(array, predicate)",
+		Examples: []string{
+			`one([1, 2, 3], # == 2) == true`,
+		},
 	},
 	{
 		Name:      "filter",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) []any)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Returns new array by filtering elements of array by [predicate](#predicate).",
+		Signature:   "filter(array, predicate)",
+		Examples: []string{
+			`filter([1, 2, 3, 4], # > 2) == [3, 4]`,
+		},
 	},
 	{
 		Name:      "map",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) any) []any)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Returns new array by applying the [predicate](#predicate) to each element of\nthe array.",
+		Signature:   "map(array, predicate)",
+		Examples: []string{
+			`map([1, 2, 3], # * 2) == [2, 4, 6]`,
+		},
 	},
 	{
 		Name:      "find",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) any)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Finds the first element in an array that satisfies the [predicate](#predicate).",
+		Signature:   "find(array, predicate)",
+		Examples: []string{
+			`find([1, 2, 3, 4], # > 2) == 3`,
+		},
 	},
 	{
 		Name:      "findIndex",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) int)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Finds the index of the first element in an array that satisfies the [predicate](#predicate).",
+		Signature:   "findIndex(array, predicate)",
+		Examples: []string{
+			`findIndex([1, 2, 3, 4], # > 2) == 2`,
+		},
 	},
 	{
 		Name:      "findLast",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) any)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Finds the last element in an array that satisfies the [predicate](#predicate).",
+		Signature:   "findLast(array, predicate)",
+		Examples: []string{
+			`findLast([1, 2, 3, 4], # > 2) == 4`,
+		},
 	},
 	{
 		Name:      "findLastIndex",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) int)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Finds the index of the last element in an array that satisfies the [predicate](#predicate).",
+		Signature:   "findLastIndex(array, predicate)",
+		Examples: []string{
+			`findLastIndex([1, 2, 3, 4], # > 2) == 3`,
+		},
 	},
 	{
 		Name:      "count",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) int)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate, Optional: true},
+		},
+		Category: CategoryArray,
+		Description: "Returns the number of elements what satisfies the [predicate](#predicate).\n" +
+			"If the predicate is not given, returns the number of `true` elements in the array.",
+		Signature: "count(array[, predicate])",
+		Examples: []string{
+			`count([1, 2, 3], # > 1) == 2`,
+			`len(filter([1, 2, 3], # > 1)) == 2`,
+			`count([true, false, true]) == 2`,
+		},
 	},
 	{
 		Name:      "sum",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool) int)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate, Optional: true},
+		},
+		Category: CategoryArray,
+		Description: "Returns the sum of all numbers in the array.\n" +
+			"If the optional `predicate` argument is given, it is a predicate that is applied on each element\n" +
+			"of the array before summing.",
+		Signature: "sum(array[, predicate])",
+		Examples: []string{
+			`sum([1, 2, 3]) == 6`,
+			`sum(map([1, 2, 3], # * 2)) == 12`,
+		},
 	},
 	{
 		Name:      "groupBy",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) any) map[any][]any)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+		},
+		Category:    CategoryArray,
+		Description: "Groups the elements of an array by the result of the [predicate](#predicate).",
+		Signature:   "groupBy(array, predicate)",
+		Examples: []string{
+			`groupBy([1, 2, 3, 4], # % 2)[0] == [2, 4]`,
+		},
 	},
 	{
 		Name:      "sortBy",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any) bool, string) []any)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+			{Kind: ArgumentExpression, Optional: true},
+		},
+		Category: CategoryArray,
+		Description: "Sorts an array by the result of the [predicate](#predicate). Optional `order` argument can be used to specify the order\n" +
+			"of sorting: `asc` or `desc`.",
+		Signature: "sortBy(array[, predicate, order])",
+		Examples: []string{
+			`sortBy([3, 1, 2], #) == [1, 2, 3]`,
+			`sortBy([3, 1, 2], #, "desc") == [3, 2, 1]`,
+		},
 	},
 	{
 		Name:      "reduce",
 		Predicate: true,
 		Types:     types(new(func([]any, func(any, any) any, any) any)),
+		Arguments: []ArgumentSpec{
+			{Kind: ArgumentExpression},
+			{Kind: ArgumentPredicate},
+			{Kind: ArgumentExpression, Optional: true},
+		},
+		Category: CategoryArray,
+		Description: "Applies a predicate to each element in the array, reducing the array to a single value.\n" +
+			"Optional `initialValue` argument can be used to specify the initial value of the accumulator.\n" +
+			"If `initialValue` is not given, the first element of the array is used as the initial value.\n\n" +
+			"Following variables are available in the predicate:\n\n" +
+			"- `#` - the current element\n" +
+			"- `#acc` - the accumulator\n" +
+			"- `#index` - the index of the current element",
+		Signature: "reduce(array, predicate[, initialValue])",
+		Examples: []string{
+			`reduce(1..9, #acc + #)`,
+			`reduce(1..9, #acc + #, 0)`,
+		},
 	},
 	{
 		Name: "len",
@@ -121,11 +276,37 @@ var Builtins = []*Function{
 			}
 			return anyType, fmt.Errorf("invalid argument for len (type %s)", args[0])
 		},
+		Category:    CategoryMiscellaneous,
+		Description: "Returns the length of an array, a map or a string.",
+		Signature:   "len(v)",
+		Examples: []string{
+			`len([1, 2, 3]) == 3`,
+			`len({"name": "John", "age": 30}) == 2`,
+			`len("Hello") == 5`,
+		},
 	},
 	{
-		Name:  "type",
-		Fast:  Type,
-		Types: types(new(func(any) string)),
+		Name:     "type",
+		Fast:     Type,
+		Types:    types(new(func(any) string)),
+		Category: CategoryConversion,
+		Description: "Returns the type of the given value `v`.\n\n" +
+			"Returns on of the following types:\n\n" +
+			"- `nil`\n" +
+			"- `bool`\n" +
+			"- `int`\n" +
+			"- `uint`\n" +
+			"- `float`\n" +
+			"- `string`\n" +
+			"- `array`\n" +
+			"- `map`.\n\n" +
+			"For named types and structs, the type name is returned.",
+		Signature: "type(v)",
+		Examples: []string{
+			`type(42) == "int"`,
+			`type("hello") == "string"`,
+			`type(now()) == "time.Time"`,
+		},
 	},
 	{
 		Name: "abs",
@@ -140,12 +321,24 @@ var Builtins = []*Function{
 			}
 			return anyType, fmt.Errorf("invalid argument for abs (type %s)", args[0])
 		},
+		Category:    CategoryNumber,
+		Description: "Returns the absolute value of a number.",
+		Signature:   "abs(n)",
+		Examples: []string{
+			`abs(-5) == 5`,
+		},
 	},
 	{
 		Name: "ceil",
 		Fast: Ceil,
 		Validate: func(args []reflect.Type) (reflect.Type, error) {
 			return validateRoundFunc("ceil", args)
+		},
+		Category:    CategoryNumber,
+		Description: "Returns the least integer value greater than or equal to x.",
+		Signature:   "ceil(n)",
+		Examples: []string{
+			`ceil(1.5) == 2.0`,
 		},
 	},
 	{
@@ -154,12 +347,24 @@ var Builtins = []*Function{
 		Validate: func(args []reflect.Type) (reflect.Type, error) {
 			return validateRoundFunc("floor", args)
 		},
+		Category:    CategoryNumber,
+		Description: "Returns the greatest integer value less than or equal to x.",
+		Signature:   "floor(n)",
+		Examples: []string{
+			`floor(1.5) == 1.0`,
+		},
 	},
 	{
 		Name: "round",
 		Fast: Round,
 		Validate: func(args []reflect.Type) (reflect.Type, error) {
 			return validateRoundFunc("round", args)
+		},
+		Category:    CategoryNumber,
+		Description: "Returns the nearest integer, rounding half away from zero.",
+		Signature:   "round(n)",
+		Examples: []string{
+			`round(1.5) == 2.0`,
 		},
 	},
 	{
@@ -179,6 +384,12 @@ var Builtins = []*Function{
 			}
 			return anyType, fmt.Errorf("invalid argument for int (type %s)", args[0])
 		},
+		Category:    CategoryConversion,
+		Description: "Returns the integer value of a number or a string.",
+		Signature:   "int(v)",
+		Examples: []string{
+			`int("123") == 123`,
+		},
 	},
 	{
 		Name: "float",
@@ -197,11 +408,23 @@ var Builtins = []*Function{
 			}
 			return anyType, fmt.Errorf("invalid argument for float (type %s)", args[0])
 		},
+		Category:    CategoryConversion,
+		Description: "Returns the float value of a number or a string.",
+		Signature:   "float(v)",
+		Examples: []string{
+			`float("123.45") == 123.45`,
+		},
 	},
 	{
-		Name:  "string",
-		Fast:  String,
-		Types: types(new(func(any any) string)),
+		Name:        "string",
+		Fast:        String,
+		Types:       types(new(func(any any) string)),
+		Category:    CategoryConversion,
+		Description: "Converts the given value `v` into a string representation.",
+		Signature:   "string(v)",
+		Examples: []string{
+			`string(123) == "123"`,
+		},
 	},
 	{
 		Name: "trim",
@@ -218,6 +441,14 @@ var Builtins = []*Function{
 			strings.TrimSpace,
 			strings.Trim,
 		),
+		Category: CategoryString,
+		Description: "Removes white spaces from both ends of a string `str`.\n" +
+			"If the optional `chars` argument is given, it is a string specifying the set of characters to be removed.",
+		Signature: "trim(str[, chars])",
+		Examples: []string{
+			`trim("  Hello  ") == "Hello"`,
+			`trim("__Hello__", "_") == "Hello"`,
+		},
 	},
 	{
 		Name: "trimPrefix",
@@ -232,6 +463,12 @@ var Builtins = []*Function{
 			strings.TrimPrefix,
 			new(func(string) string),
 		),
+		Category:    CategoryString,
+		Description: "Removes the specified prefix from the string `str` if it starts with that prefix.",
+		Signature:   "trimPrefix(str, prefix)",
+		Examples: []string{
+			`trimPrefix("HelloWorld", "Hello") == "World"`,
+		},
 	},
 	{
 		Name: "trimSuffix",
@@ -246,20 +483,38 @@ var Builtins = []*Function{
 			strings.TrimSuffix,
 			new(func(string) string),
 		),
+		Category:    CategoryString,
+		Description: "Removes the specified suffix from the string `str` if it ends with that suffix.",
+		Signature:   "trimSuffix(str, suffix)",
+		Examples: []string{
+			`trimSuffix("HelloWorld", "World") == "Hello"`,
+		},
 	},
 	{
 		Name: "upper",
 		Fast: func(arg any) any {
 			return strings.ToUpper(arg.(string))
 		},
-		Types: types(strings.ToUpper),
+		Types:       types(strings.ToUpper),
+		Category:    CategoryString,
+		Description: "Converts all the characters in string `str` to uppercase.",
+		Signature:   "upper(str)",
+		Examples: []string{
+			`upper("hello") == "HELLO"`,
+		},
 	},
 	{
 		Name: "lower",
 		Fast: func(arg any) any {
 			return strings.ToLower(arg.(string))
 		},
-		Types: types(strings.ToLower),
+		Types:       types(strings.ToLower),
+		Category:    CategoryString,
+		Description: "Converts all the characters in string `str` to lowercase.",
+		Signature:   "lower(str)",
+		Examples: []string{
+			`lower("HELLO") == "hello"`,
+		},
 	},
 	{
 		Name: "split",
@@ -276,6 +531,13 @@ var Builtins = []*Function{
 			strings.Split,
 			strings.SplitN,
 		),
+		Category:    CategoryString,
+		Description: "Splits the string `str` at each instance of the delimiter and returns an array of substrings.",
+		Signature:   "split(str, delimiter[, n])",
+		Examples: []string{
+			`split("apple,orange,grape", ",") == ["apple", "orange", "grape"]`,
+			`split("apple,orange,grape", ",", 2) == ["apple", "orange,grape"]`,
+		},
 	},
 	{
 		Name: "splitAfter",
@@ -292,6 +554,13 @@ var Builtins = []*Function{
 			strings.SplitAfter,
 			strings.SplitAfterN,
 		),
+		Category:    CategoryString,
+		Description: "Splits the string `str` after each instance of the delimiter.",
+		Signature:   "splitAfter(str, delimiter[, n])",
+		Examples: []string{
+			`splitAfter("apple,orange,grape", ",") == ["apple,", "orange,", "grape"]`,
+			`splitAfter("apple,orange,grape", ",", 2) == ["apple,", "orange,grape"]`,
+		},
 	},
 	{
 		Name: "replace",
@@ -308,6 +577,12 @@ var Builtins = []*Function{
 			strings.Replace,
 			strings.ReplaceAll,
 		),
+		Category:    CategoryString,
+		Description: "Replaces all occurrences of `old` in string `str` with `new`.",
+		Signature:   "replace(str, old, new)",
+		Examples: []string{
+			`replace("Hello World", "World", "Universe") == "Hello Universe"`,
+		},
 	},
 	{
 		Name: "repeat",
@@ -322,7 +597,13 @@ var Builtins = []*Function{
 			}
 			return strings.Repeat(s, n), uint(len(s) * n), nil
 		},
-		Types: types(strings.Repeat),
+		Types:       types(strings.Repeat),
+		Category:    CategoryString,
+		Description: "Repeats the string `str` `n` times.",
+		Signature:   "repeat(str, n)",
+		Examples: []string{
+			`repeat("Hi", 3) == "HiHiHi"`,
+		},
 	},
 	{
 		Name: "join",
@@ -350,34 +631,66 @@ var Builtins = []*Function{
 			new(func([]string, string) string),
 			new(func([]string) string),
 		),
+		Category: CategoryArray,
+		Description: "Joins an array of strings into a single string with the given delimiter.\n" +
+			"If no delimiter is given, an empty string is used.",
+		Signature: "join(array[, delimiter])",
+		Examples: []string{
+			`join(["apple", "orange", "grape"], ",") == "apple,orange,grape"`,
+			`join(["apple", "orange", "grape"]) == "appleorangegrape"`,
+		},
 	},
 	{
 		Name: "indexOf",
 		Func: func(args ...any) (any, error) {
 			return strings.Index(args[0].(string), args[1].(string)), nil
 		},
-		Types: types(strings.Index),
+		Types:       types(strings.Index),
+		Category:    CategoryString,
+		Description: "Returns the index of the first occurrence of the substring in string `str` or -1 if not found.",
+		Signature:   "indexOf(str, substring)",
+		Examples: []string{
+			`indexOf("apple pie", "pie") == 6`,
+		},
 	},
 	{
 		Name: "lastIndexOf",
 		Func: func(args ...any) (any, error) {
 			return strings.LastIndex(args[0].(string), args[1].(string)), nil
 		},
-		Types: types(strings.LastIndex),
+		Types:       types(strings.LastIndex),
+		Category:    CategoryString,
+		Description: "Returns the index of the last occurrence of the substring in string `str` or -1 if not found.",
+		Signature:   "lastIndexOf(str, substring)",
+		Examples: []string{
+			`lastIndexOf("apple pie apple", "apple") == 10`,
+		},
 	},
 	{
 		Name: "hasPrefix",
 		Func: func(args ...any) (any, error) {
 			return strings.HasPrefix(args[0].(string), args[1].(string)), nil
 		},
-		Types: types(strings.HasPrefix),
+		Types:       types(strings.HasPrefix),
+		Category:    CategoryString,
+		Description: "Returns `true` if string `str` starts with the given prefix.",
+		Signature:   "hasPrefix(str, prefix)",
+		Examples: []string{
+			`hasPrefix("HelloWorld", "Hello") == true`,
+		},
 	},
 	{
 		Name: "hasSuffix",
 		Func: func(args ...any) (any, error) {
 			return strings.HasSuffix(args[0].(string), args[1].(string)), nil
 		},
-		Types: types(strings.HasSuffix),
+		Types:       types(strings.HasSuffix),
+		Category:    CategoryString,
+		Description: "Returns `true` if string `str` ends with the given suffix.",
+		Signature:   "hasSuffix(str, suffix)",
+		Examples: []string{
+			`hasSuffix("HelloWorld", "World") == true`,
+		},
 	},
 	{
 		Name: "max",
@@ -387,6 +700,12 @@ var Builtins = []*Function{
 		Validate: func(args []reflect.Type) (reflect.Type, error) {
 			return validateAggregateFunc("max", args)
 		},
+		Category:    CategoryNumber,
+		Description: "Returns the maximum of the two numbers `n1` and `n2`.",
+		Signature:   "max(n1, n2)",
+		Examples: []string{
+			`max(5, 7) == 7`,
+		},
 	},
 	{
 		Name: "min",
@@ -395,6 +714,12 @@ var Builtins = []*Function{
 		},
 		Validate: func(args []reflect.Type) (reflect.Type, error) {
 			return validateAggregateFunc("min", args)
+		},
+		Category:    CategoryNumber,
+		Description: "Returns the minimum of the two numbers `n1` and `n2`.",
+		Signature:   "min(n1, n2)",
+		Examples: []string{
+			`min(5, 7) == 5`,
 		},
 	},
 	{
@@ -411,6 +736,12 @@ var Builtins = []*Function{
 		},
 		Validate: func(args []reflect.Type) (reflect.Type, error) {
 			return validateAggregateFunc("mean", args)
+		},
+		Category:    CategoryArray,
+		Description: "Returns the average of all numbers in the array.",
+		Signature:   "mean(array)",
+		Examples: []string{
+			`mean([1, 2, 3]) == 2.0`,
 		},
 	},
 	{
@@ -432,6 +763,12 @@ var Builtins = []*Function{
 		Validate: func(args []reflect.Type) (reflect.Type, error) {
 			return validateAggregateFunc("median", args)
 		},
+		Category:    CategoryArray,
+		Description: "Returns the median of all numbers in the array.",
+		Signature:   "median(array)",
+		Examples: []string{
+			`median([1, 2, 3]) == 2.0`,
+		},
 	},
 	{
 		Name: "toJSON",
@@ -443,6 +780,12 @@ var Builtins = []*Function{
 			return string(b), nil
 		},
 		Types: types(new(func(any) string)),
+		Category:    CategoryConversion,
+		Description: "Converts the given value `v` to its JSON string representation.",
+		Signature:   "toJSON(v)",
+		Examples: []string{
+			`toJSON({"name": "John", "age": 30})`,
+		},
 	},
 	{
 		Name: "fromJSON",
@@ -455,6 +798,12 @@ var Builtins = []*Function{
 			return v, nil
 		},
 		Types: types(new(func(string) any)),
+		Category:    CategoryConversion,
+		Description: "Parses the given JSON string `v` and returns the corresponding value.",
+		Signature:   "fromJSON(v)",
+		Examples: []string{
+			`fromJSON('{"name": "John", "age": 30}')`,
+		},
 	},
 	{
 		Name: "toBase64",
@@ -462,6 +811,12 @@ var Builtins = []*Function{
 			return base64.StdEncoding.EncodeToString([]byte(args[0].(string))), nil
 		},
 		Types: types(new(func(string) string)),
+		Category:    CategoryConversion,
+		Description: "Encodes the string `v` into Base64 format.",
+		Signature:   "toBase64(v)",
+		Examples: []string{
+			`toBase64("Hello World") == "SGVsbG8gV29ybGQ="`,
+		},
 	},
 	{
 		Name: "fromBase64",
@@ -473,6 +828,12 @@ var Builtins = []*Function{
 			return string(b), nil
 		},
 		Types: types(new(func(string) string)),
+		Category:    CategoryConversion,
+		Description: "Decodes the Base64 encoded string `v` back to its original form.",
+		Signature:   "fromBase64(v)",
+		Examples: []string{
+			`fromBase64("SGVsbG8gV29ybGQ=") == "Hello World"`,
+		},
 	},
 	{
 		Name: "now",
@@ -501,6 +862,12 @@ var Builtins = []*Function{
 		Deref: func(i int, arg reflect.Type) bool {
 			return false
 		},
+		Category:    CategoryDate,
+		Description: "Returns the current date as a [time.Time](https://pkg.go.dev/time#Time) value.",
+		Signature:   "now()",
+		Examples: []string{
+			`now().Year() >= 2024`,
+		},
 	},
 	{
 		Name: "duration",
@@ -508,6 +875,13 @@ var Builtins = []*Function{
 			return time.ParseDuration(args[0].(string))
 		},
 		Types: types(time.ParseDuration),
+		Category: CategoryDate,
+		Description: "Returns [time.Duration](https://pkg.go.dev/time#Duration) value of the given string `str`.\n\n" +
+			"Valid time units are \"ns\", \"us\" (or \"µs\"), \"ms\", \"s\", \"m\", \"h\".",
+		Signature: "duration(str)",
+		Examples: []string{
+			`duration("1h").Seconds() == 3600`,
+		},
 	},
 	{
 		Name: "date",
@@ -581,6 +955,38 @@ var Builtins = []*Function{
 			}
 			return true
 		},
+		Category: CategoryDate,
+		Description: "Converts the given string `str` into a date representation.\n\n" +
+			"If the optional `format` argument is given, it is a string specifying the format of the date.\n" +
+			"The format string uses the same formatting rules as the standard\n" +
+			"Go [time package](https://pkg.go.dev/time#pkg-constants).\n\n" +
+			"If the optional `timezone` argument is given, it is a string specifying the timezone of the date.\n\n" +
+			"If the `format` argument is not given, the `v` argument must be in one of the following formats:\n\n" +
+			"- 2006-01-02\n" +
+			"- 15:04:05\n" +
+			"- 2006-01-02 15:04:05\n" +
+			"- RFC3339\n" +
+			"- RFC822,\n" +
+			"- RFC850,\n" +
+			"- RFC1123,\n\n" +
+			"Available methods on the date:\n\n" +
+			"- `Year()` - returns the year \n" +
+			"- `Month()` - returns the month (starting from 1)\n" +
+			"- `Day()` - returns the day of the month\n" +
+			"- `Hour()` - returns the hour\n" +
+			"- `Minute()` - returns the minute\n" +
+			"- `Second()` - returns the second\n" +
+			"- `Weekday()` - returns the day of the week\n" +
+			"- `YearDay()` - returns the day of the year\n" +
+			"- and [more](https://pkg.go.dev/time#Time).",
+		Signature: "date(str[, format[, timezone]])",
+		Examples: []string{
+			`date("2023-08-14")`,
+			`date("15:04:05")`,
+			`date("2023-08-14T00:00:00Z")`,
+			`date("2023-08-14 00:00:00", "2006-01-02 15:04:05", "Europe/Zurich")`,
+			`date("2023-08-14").Year() == 2023`,
+		},
 	},
 	{
 		Name: "timezone",
@@ -592,6 +998,14 @@ var Builtins = []*Function{
 			return tz, nil
 		},
 		Types: types(time.LoadLocation),
+		Category: CategoryDate,
+		Description: "Returns the timezone of the given string `str`. List of available timezones can be\n" +
+			"found [here](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).",
+		Signature: "timezone(str)",
+		Examples: []string{
+			`timezone("Europe/Zurich")`,
+			`timezone("UTC")`,
+		},
 	},
 	{
 		Name: "first",
@@ -614,6 +1028,12 @@ var Builtins = []*Function{
 				return args[0].Elem(), nil
 			}
 			return anyType, fmt.Errorf("cannot get first element from %s", args[0])
+		},
+		Category:    CategoryArray,
+		Description: "Returns the first element from an array. If the array is empty, returns `nil`.",
+		Signature:   "first(array)",
+		Examples: []string{
+			`first([1, 2, 3]) == 1`,
 		},
 	},
 	{
@@ -638,10 +1058,24 @@ var Builtins = []*Function{
 			}
 			return anyType, fmt.Errorf("cannot get last element from %s", args[0])
 		},
+		Category:    CategoryArray,
+		Description: "Returns the last element from an array. If the array is empty, returns `nil`.",
+		Signature:   "last(array)",
+		Examples: []string{
+			`last([1, 2, 3]) == 3`,
+		},
 	},
 	{
 		Name: "get",
 		Func: get,
+		Category: CategoryMiscellaneous,
+		Description: "Retrieves the element at the specified index from an array or map `v`. If the index is out of range, returns `nil`.\n" +
+			"Or the key does not exist, returns `nil`.",
+		Signature: "get(v, index)",
+		Examples: []string{
+			`get([1, 2, 3], 1) == 2`,
+			`get({"name": "John", "age": 30}, "name") == "John"`,
+		},
 	},
 	{
 		Name: "take",
@@ -681,6 +1115,12 @@ var Builtins = []*Function{
 			}
 			return args[0], nil
 		},
+		Category: CategoryArray,
+		Description: "Returns the first `n` elements from an array. If the array has fewer than `n` elements, returns the whole array.",
+		Signature:   "take(array, n)",
+		Examples: []string{
+			`take([1, 2, 3, 4], 2) == [1, 2]`,
+		},
 	},
 	{
 		Name: "keys",
@@ -710,6 +1150,12 @@ var Builtins = []*Function{
 				return arrayType, nil
 			}
 			return anyType, fmt.Errorf("cannot get keys from %s", args[0])
+		},
+		Category:    CategoryMap,
+		Description: "Returns an array containing the keys of the map.",
+		Signature:   "keys(map)",
+		Examples: []string{
+			`keys({"name": "John", "age": 30}) == ["name", "age"]`,
 		},
 	},
 	{
@@ -741,6 +1187,12 @@ var Builtins = []*Function{
 			}
 			return anyType, fmt.Errorf("cannot get values from %s", args[0])
 		},
+		Category:    CategoryMap,
+		Description: "Returns an array containing the values of the map.",
+		Signature:   "values(map)",
+		Examples: []string{
+			`values({"name": "John", "age": 30}) == ["John", 30]`,
+		},
 	},
 	{
 		Name: "toPairs",
@@ -768,6 +1220,12 @@ var Builtins = []*Function{
 				return arrayType, nil
 			}
 			return anyType, fmt.Errorf("cannot transform %s to pairs", args[0])
+		},
+		Category:    CategoryConversion,
+		Description: "Converts a map to an array of key-value pairs.",
+		Signature:   "toPairs(map)",
+		Examples: []string{
+			`toPairs({"name": "John", "age": 30}) == [["name", "John"], ["age", 30]]`,
 		},
 	},
 	{
@@ -805,6 +1263,12 @@ var Builtins = []*Function{
 			}
 			return anyType, fmt.Errorf("cannot transform %s from pairs", args[0])
 		},
+		Category:    CategoryConversion,
+		Description: "Converts an array of key-value pairs to a map.",
+		Signature:   "fromPairs(array)",
+		Examples: []string{
+			`fromPairs([["name", "John"], ["age", 30]])["name"] == "John"`,
+		},
 	},
 	{
 		Name: "reverse",
@@ -838,6 +1302,13 @@ var Builtins = []*Function{
 			default:
 				return anyType, fmt.Errorf("cannot reverse %s", args[0])
 			}
+		},
+		Category:    CategoryArray,
+		Description: "Return new reversed copy of the array.",
+		Signature:   "reverse(array)",
+		Examples: []string{
+			`reverse([3, 1, 4]) == [4, 1, 3]`,
+			`reverse(reverse([3, 1, 4])) == [3, 1, 4]`,
 		},
 	},
 
@@ -889,6 +1360,12 @@ var Builtins = []*Function{
 				return anyType, fmt.Errorf("cannot uniq %s", args[0])
 			}
 		},
+		Category:    CategoryArray,
+		Description: "Removes duplicates from an array.",
+		Signature:   "uniq(array)",
+		Examples: []string{
+			`uniq([1, 2, 3, 2, 1]) == [1, 2, 3]`,
+		},
 	},
 
 	{
@@ -933,6 +1410,12 @@ var Builtins = []*Function{
 
 			return arrayType, nil
 		},
+		Category:    CategoryArray,
+		Description: "Concatenates two or more arrays.",
+		Signature:   "concat(array1, array2[, ...])",
+		Examples: []string{
+			`concat([1, 2], [3, 4]) == [1, 2, 3, 4]`,
+		},
 	},
 	{
 		Name: "flatten",
@@ -966,6 +1449,12 @@ var Builtins = []*Function{
 			}
 
 			return arrayType, nil
+		},
+		Category:    CategoryArray,
+		Description: "Flattens given array into one-dimensional array.",
+		Signature:   "flatten(array)",
+		Examples: []string{
+			`flatten([1, 2, [3, 4]]) == [1, 2, 3, 4]`,
 		},
 	},
 	{
@@ -1033,32 +1522,96 @@ var Builtins = []*Function{
 			new(func([]string) []any),
 			new(func([]int) []any),
 		),
+		Category: CategoryArray,
+		Description: "Sorts an array in ascending order. Optional `order` argument can be used to specify the order of sorting: `asc`\n" +
+			"or `desc`.",
+		Signature: "sort(array[, order])",
+		Examples: []string{
+			`sort([3, 1, 4]) == [1, 3, 4]`,
+			`sort([3, 1, 4], "desc") == [4, 3, 1]`,
+		},
 	},
-	bitFunc("bitand", func(x, y int) (any, error) {
+	bitFunc(&Function{
+		Name:        "bitand",
+		Category:    CategoryBitwise,
+		Description: "Returns the values resulting from the bitwise AND operation.",
+		Signature:   "bitand(int, int)",
+		Examples: []string{
+			`bitand(0b1010, 0b1100) == 0b1000`,
+		},
+	}, func(x, y int) (any, error) {
 		return x & y, nil
 	}),
-	bitFunc("bitor", func(x, y int) (any, error) {
+	bitFunc(&Function{
+		Name:        "bitor",
+		Category:    CategoryBitwise,
+		Description: "Returns the values resulting from the bitwise OR operation.",
+		Signature:   "bitor(int, int)",
+		Examples: []string{
+			`bitor(0b1010, 0b1100) == 0b1110`,
+		},
+	}, func(x, y int) (any, error) {
 		return x | y, nil
 	}),
-	bitFunc("bitxor", func(x, y int) (any, error) {
+	bitFunc(&Function{
+		Name:        "bitxor",
+		Category:    CategoryBitwise,
+		Description: "Returns the values resulting from the bitwise XOR operation.",
+		Signature:   "bitxor(int, int)",
+		Examples: []string{
+			`bitxor(0b1010, 0b1100) == 0b110`,
+		},
+	}, func(x, y int) (any, error) {
 		return x ^ y, nil
 	}),
-	bitFunc("bitnand", func(x, y int) (any, error) {
+	bitFunc(&Function{
+		Name:        "bitnand",
+		Category:    CategoryBitwise,
+		Description: "Returns the values resulting from the bitwise AND NOT operation.",
+		Signature:   "bitnand(int, int)",
+		Examples: []string{
+			`bitnand(0b1010, 0b1100) == 0b10`,
+		},
+	}, func(x, y int) (any, error) {
 		return x &^ y, nil
 	}),
-	bitFunc("bitshl", func(x, y int) (any, error) {
+	bitFunc(&Function{
+		Name:        "bitshl",
+		Category:    CategoryBitwise,
+		Description: "Returns the values resulting from the Left Shift operation.",
+		Signature:   "bitshl(int, int)",
+		Examples: []string{
+			`bitshl(0b101101, 2) == 0b10110100`,
+		},
+	}, func(x, y int) (any, error) {
 		if y < 0 {
 			return nil, fmt.Errorf("invalid operation: negative shift count %d (type int)", y)
 		}
 		return x << y, nil
 	}),
-	bitFunc("bitshr", func(x, y int) (any, error) {
+	bitFunc(&Function{
+		Name:        "bitshr",
+		Category:    CategoryBitwise,
+		Description: "Returns the values resulting from the Right Shift operation.",
+		Signature:   "bitshr(int, int)",
+		Examples: []string{
+			`bitshr(0b101101, 2) == 0b1011`,
+		},
+	}, func(x, y int) (any, error) {
 		if y < 0 {
 			return nil, fmt.Errorf("invalid operation: negative shift count %d (type int)", y)
 		}
 		return x >> y, nil
 	}),
-	bitFunc("bitushr", func(x, y int) (any, error) {
+	bitFunc(&Function{
+		Name:        "bitushr",
+		Category:    CategoryBitwise,
+		Description: "Returns the values resulting from the unsigned Right Shift operation.",
+		Signature:   "bitushr(int, int)",
+		Examples: []string{
+			`bitushr(-0b101, 2) == 4611686018427387902`,
+		},
+	}, func(x, y int) (any, error) {
 		if y < 0 {
 			return nil, fmt.Errorf("invalid operation: negative shift count %d (type int)", y)
 		}
@@ -1076,6 +1629,12 @@ var Builtins = []*Function{
 			}
 			return ^x, nil
 		},
-		Types: types(new(func(int) int)),
+		Types:       types(new(func(int) int)),
+		Category:    CategoryBitwise,
+		Description: "Returns the values resulting from the bitwise NOT operation.",
+		Signature:   "bitnot(int)",
+		Examples: []string{
+			`bitnot(0b1010) == -0b1011`,
+		},
 	},
 }

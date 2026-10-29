@@ -59,6 +59,33 @@ func (c *Context) Markdown() string {
 		out += "\n"
 	}
 
+	if len(c.BuiltinFunctions) > 0 {
+		out += "\n" + c.MarkdownBuiltins()
+	}
+
+	return out
+}
+
+// MarkdownBuiltins renders the builtin functions catalog: categories in
+// canonical order, each function with its signature, description and
+// examples. The catalog is derived from the builtin registry.
+func (c *Context) MarkdownBuiltins() string {
+	out := "### Builtin Functions\n"
+	for _, category := range c.BuiltinFunctions {
+		if len(category.Functions) == 0 {
+			continue
+		}
+		out += fmt.Sprintf("\n#### %s\n", category.Name)
+		for _, fn := range category.Functions {
+			out += fmt.Sprintf("\n##### %s\n", fn.Signature)
+			if fn.Description != "" {
+				out += "\n" + fn.Description + "\n"
+			}
+			if len(fn.Examples) > 0 {
+				out += "\n```expr\n" + strings.Join(fn.Examples, "\n") + "\n```\n"
+			}
+		}
+	}
 	return out
 }
 

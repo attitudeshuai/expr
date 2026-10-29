@@ -1,0 +1,607 @@
+=== all ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpJumpIfEnd  <7>  (10)
+3   OpPointer
+4   OpPush  <1>  0
+5   OpMore
+6   OpJumpIfFalse  <4>  (11)
+7   OpPop
+8   OpIncrementIndex
+9   OpJumpBackward  <8>  (2)
+10  OpTrue
+11  OpEnd
+
+=== none ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpJumpIfEnd  <8>  (11)
+3   OpPointer
+4   OpPush  <1>  3
+5   OpMore
+6   OpNot
+7   OpJumpIfFalse  <4>  (12)
+8   OpPop
+9   OpIncrementIndex
+10  OpJumpBackward  <9>  (2)
+11  OpTrue
+12  OpEnd
+
+=== any ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpJumpIfEnd  <7>  (10)
+3   OpPointer
+4   OpPush  <1>  2
+5   OpMore
+6   OpJumpIfTrue  <4>  (11)
+7   OpPop
+8   OpIncrementIndex
+9   OpJumpBackward  <8>  (2)
+10  OpFalse
+11  OpEnd
+
+=== one ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpJumpIfEnd  <10>  (13)
+3   OpPointer
+4   OpPush  <1>  2
+5   OpEqualInt
+6   OpJumpIfFalse  <3>  (10)
+7   OpPop
+8   OpIncrementCount
+9   OpJump  <1>  (11)
+10  OpPop
+11  OpIncrementIndex
+12  OpJumpBackward  <11>  (2)
+13  OpGetCount
+14  OpPush  <2>  1
+15  OpEqual
+16  OpEnd
+
+=== filter ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpJumpIfEnd  <11>  (14)
+3   OpPointer
+4   OpPush  <1>  1
+5   OpMore
+6   OpJumpIfFalse  <4>  (11)
+7   OpPop
+8   OpIncrementCount
+9   OpPointer
+10  OpJump  <1>  (12)
+11  OpPop
+12  OpIncrementIndex
+13  OpJumpBackward  <12>  (2)
+14  OpGetCount
+15  OpEnd
+16  OpArray
+
+=== map ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpJumpIfEnd  <5>  (8)
+3   OpPointer
+4   OpPush  <1>  2
+5   OpMultiply
+6   OpIncrementIndex
+7   OpJumpBackward  <6>  (2)
+8   OpGetLen
+9   OpEnd
+10  OpArray
+
+=== find ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpJumpIfEnd  <10>  (13)
+3   OpPointer
+4   OpPush  <1>  1
+5   OpMore
+6   OpJumpIfFalse  <3>  (10)
+7   OpPop
+8   OpPointer
+9   OpJump  <4>  (14)
+10  OpPop
+11  OpIncrementIndex
+12  OpJumpBackward  <11>  (2)
+13  OpNil
+14  OpEnd
+
+=== findIndex ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpJumpIfEnd  <10>  (13)
+3   OpPointer
+4   OpPush  <1>  1
+5   OpMore
+6   OpJumpIfFalse  <3>  (10)
+7   OpPop
+8   OpGetIndex
+9   OpJump  <4>  (14)
+10  OpPop
+11  OpIncrementIndex
+12  OpJumpBackward  <11>  (2)
+13  OpNil
+14  OpEnd
+
+=== findLast ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpGetLen
+3   OpInt  <1>
+4   OpSubtract
+5   OpSetIndex
+6   OpGetIndex
+7   OpInt  <0>
+8   OpMoreOrEqual
+9   OpJumpIfFalse  <11>  (21)
+10  OpPop
+11  OpPointer
+12  OpPush  <1>  1
+13  OpMore
+14  OpJumpIfFalse  <3>  (18)
+15  OpPop
+16  OpPointer
+17  OpJump  <5>  (23)
+18  OpPop
+19  OpDecrementIndex
+20  OpJumpBackward  <15>  (6)
+21  OpPop
+22  OpNil
+23  OpEnd
+
+=== findLastIndex ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpGetLen
+3   OpInt  <1>
+4   OpSubtract
+5   OpSetIndex
+6   OpGetIndex
+7   OpInt  <0>
+8   OpMoreOrEqual
+9   OpJumpIfFalse  <11>  (21)
+10  OpPop
+11  OpPointer
+12  OpPush  <1>  1
+13  OpMore
+14  OpJumpIfFalse  <3>  (18)
+15  OpPop
+16  OpGetIndex
+17  OpJump  <5>  (23)
+18  OpPop
+19  OpDecrementIndex
+20  OpJumpBackward  <15>  (6)
+21  OpPop
+22  OpNil
+23  OpEnd
+
+=== count ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpJumpIfEnd  <10>  (13)
+3   OpPointer
+4   OpPush  <1>  1
+5   OpMore
+6   OpJumpIfFalse  <3>  (10)
+7   OpPop
+8   OpIncrementCount
+9   OpJump  <1>  (11)
+10  OpPop
+11  OpIncrementIndex
+12  OpJumpBackward  <11>  (2)
+13  OpGetCount
+14  OpEnd
+
+=== sum ===
+0  OpPush  <0>  6
+
+=== groupBy ===
+0   OpPush  <0>  [1 2 3]
+1   OpBegin
+2   OpCreate  <1>
+3   OpSetAcc
+4   OpJumpIfEnd  <6>  (11)
+5   OpPointer
+6   OpPush  <1>  2
+7   OpModulo
+8   OpGroupBy
+9   OpIncrementIndex
+10  OpJumpBackward  <7>  (4)
+11  OpGetAcc
+12  OpEnd
+
+=== sortBy ===
+0   OpPush  <0>  [3 1 2]
+1   OpBegin
+2   OpPush    <1>  asc
+3   OpCreate  <2>
+4   OpSetAcc
+5   OpJumpIfEnd  <4>  (10)
+6   OpPointer
+7   OpSortBy
+8   OpIncrementIndex
+9   OpJumpBackward  <5>  (5)
+10  OpSort
+11  OpEnd
+
+=== reduce ===
+0  OpPush  <0>  6
+
+=== len ===
+0  OpPush          <0>   foo
+1  OpCallBuiltin1  <15>  len
+
+=== type ===
+0  OpPush          <0>   1
+1  OpCallBuiltin1  <16>  type
+
+=== abs ===
+0  OpPush          <0>   -1
+1  OpCallBuiltin1  <17>  abs
+
+=== ceil ===
+0  OpPush          <0>   1.2
+1  OpCallBuiltin1  <18>  ceil
+
+=== floor ===
+0  OpPush          <0>   1.2
+1  OpCallBuiltin1  <19>  floor
+
+=== round ===
+0  OpPush          <0>   1.2
+1  OpCallBuiltin1  <20>  round
+
+=== int ===
+0  OpPush          <0>   1
+1  OpCallBuiltin1  <21>  int
+
+=== float ===
+0  OpPush          <0>   1
+1  OpCallBuiltin1  <22>  float
+
+=== string ===
+0  OpPush          <0>   1
+1  OpCallBuiltin1  <23>  string
+
+=== trim ===
+0  OpPush   <0>   a 
+1  OpPush   <1>  a
+2  OpCall2  <0>  trim
+
+=== trimPrefix ===
+0  OpPush   <0>  ab
+1  OpPush   <1>  a
+2  OpCall2  <0>  trimPrefix
+
+=== trimSuffix ===
+0  OpPush   <0>  ab
+1  OpPush   <1>  b
+2  OpCall2  <0>  trimSuffix
+
+=== upper ===
+0  OpPush          <0>   a
+1  OpCallBuiltin1  <27>  upper
+
+=== lower ===
+0  OpPush          <0>   A
+1  OpCallBuiltin1  <28>  lower
+
+=== split ===
+0  OpPush   <0>  a,b,c
+1  OpPush   <1>  ,
+2  OpPush   <2>  2
+3  OpCall3  <0>  split
+
+=== splitAfter ===
+0  OpPush   <0>  a,b
+1  OpPush   <1>  ,
+2  OpCall2  <0>  splitAfter
+
+=== replace ===
+0  OpPush      <0>  a,b,c
+1  OpPush      <1>  ,
+2  OpPush      <2>  ;
+3  OpPush      <3>  1
+4  OpLoadFunc  <0>  replace
+5  OpCallN     <4>
+
+=== repeat ===
+0  OpPush      <0>  a
+1  OpPush      <1>  2
+2  OpPush      <2>  repeat
+3  OpCallSafe  <2>
+
+=== join ===
+0  OpPush   <0>  [a b]
+1  OpPush   <1>  ,
+2  OpCall2  <0>  join
+
+=== indexOf ===
+0  OpPush   <0>  abc
+1  OpPush   <1>  b
+2  OpCall2  <0>  indexOf
+
+=== lastIndexOf ===
+0  OpPush   <0>  abc
+1  OpPush   <1>  b
+2  OpCall2  <0>  lastIndexOf
+
+=== hasPrefix ===
+0  OpPush   <0>  abc
+1  OpPush   <1>  a
+2  OpCall2  <0>  hasPrefix
+
+=== hasSuffix ===
+0  OpPush   <0>  abc
+1  OpPush   <1>  c
+2  OpCall2  <0>  hasSuffix
+
+=== max ===
+0  OpPush      <0>  1
+1  OpPush      <1>  2
+2  OpPush      <2>  3
+3  OpPush      <3>  4
+4  OpLoadFunc  <0>  max
+5  OpCallN     <4>
+
+=== min ===
+0  OpPush   <0>  1
+1  OpPush   <1>  2
+2  OpCall2  <0>  min
+
+=== mean ===
+0  OpPush   <0>  1
+1  OpPush   <1>  2
+2  OpPush   <2>  3
+3  OpCall3  <0>  mean
+
+=== median ===
+0  OpPush   <0>  1
+1  OpPush   <1>  2
+2  OpPush   <2>  3
+3  OpCall3  <0>  median
+
+=== toJSON ===
+0  OpPush  <0>  a
+1  OpPush  <1>  1
+2  OpPush  <1>  1
+3  OpMap
+4  OpCall1  <0>  toJSON
+
+=== fromJSON ===
+0  OpPush   <0>  {}
+1  OpCall1  <0>  fromJSON
+
+=== toBase64 ===
+0  OpPush   <0>  a
+1  OpCall1  <0>  toBase64
+
+=== fromBase64 ===
+0  OpPush   <0>  YQ==
+1  OpCall1  <0>  fromBase64
+
+=== now ===
+0  OpCall0  <0>  now
+
+=== duration ===
+0  OpPush   <0>  1h
+1  OpCall1  <0>  duration
+
+=== date ===
+0  OpPush   <0>  2020-01-01
+1  OpPush   <1>  2006-01-02
+2  OpPush   <2>  UTC
+3  OpCall3  <0>  date
+
+=== timezone ===
+0  OpPush   <0>  UTC
+1  OpCall1  <0>  timezone
+
+=== first ===
+0  OpPush   <0>  [1 2]
+1  OpCall1  <0>  first
+
+=== last ===
+0  OpPush   <0>  [1 2]
+1  OpCall1  <0>  last
+
+=== get ===
+0  OpPush   <0>  [1 2]
+1  OpPush   <1>  0
+2  OpCall2  <0>  get
+
+=== take ===
+0  OpPush   <0>  [1 2]
+1  OpPush   <1>  1
+2  OpCall2  <0>  take
+
+=== keys ===
+0  OpPush  <0>  a
+1  OpPush  <1>  1
+2  OpPush  <1>  1
+3  OpMap
+4  OpCall1  <0>  keys
+
+=== values ===
+0  OpPush  <0>  a
+1  OpPush  <1>  1
+2  OpPush  <1>  1
+3  OpMap
+4  OpCall1  <0>  values
+
+=== toPairs ===
+0  OpPush  <0>  a
+1  OpPush  <1>  1
+2  OpPush  <1>  1
+3  OpMap
+4  OpCall1  <0>  toPairs
+
+=== fromPairs ===
+0  OpPush  <0>  [a 1]
+1  OpPush  <1>  1
+2  OpArray
+3  OpCall1  <0>  fromPairs
+
+=== reverse ===
+0  OpPush      <0>  [1 2]
+1  OpPush      <1>  reverse
+2  OpCallSafe  <1>
+
+=== uniq ===
+0  OpPush   <0>  [1 1 2]
+1  OpCall1  <0>  uniq
+
+=== concat ===
+0  OpPush      <0>  [1]
+1  OpPush      <1>  [2]
+2  OpPush      <2>  [3]
+3  OpPush      <3>  [4]
+4  OpPush      <4>  concat
+5  OpCallSafe  <4>
+
+=== flatten ===
+0  OpPush  <0>  [1]
+1  OpPush  <1>  [2]
+2  OpPush  <2>  2
+3  OpArray
+4  OpPush      <3>  flatten
+5  OpCallSafe  <1>
+
+=== sort ===
+0  OpPush      <0>  [3 1 2]
+1  OpPush      <1>  desc
+2  OpPush      <2>  sort
+3  OpCallSafe  <2>
+
+=== bitand ===
+0  OpPush   <0>  1
+1  OpPush   <1>  2
+2  OpCall2  <0>  bitand
+
+=== bitor ===
+0  OpPush   <0>  1
+1  OpPush   <1>  2
+2  OpCall2  <0>  bitor
+
+=== bitxor ===
+0  OpPush   <0>  1
+1  OpPush   <1>  2
+2  OpCall2  <0>  bitxor
+
+=== bitnand ===
+0  OpPush   <0>  1
+1  OpPush   <1>  2
+2  OpCall2  <0>  bitnand
+
+=== bitshl ===
+0  OpPush   <0>  1
+1  OpPush   <1>  2
+2  OpCall2  <0>  bitshl
+
+=== bitshr ===
+0  OpPush   <0>  1
+1  OpPush   <1>  2
+2  OpCall2  <0>  bitshr
+
+=== bitushr ===
+0  OpPush   <0>  1
+1  OpPush   <1>  2
+2  OpCall2  <0>  bitushr
+
+=== bitnot ===
+0  OpPush   <0>  1
+1  OpCall1  <0>  bitnot
+
+=== count_no_predicate ===
+0   OpPush  <0>  [true false true]
+1   OpBegin
+2   OpJumpIfEnd  <8>  (11)
+3   OpPointer
+4   OpJumpIfFalse  <3>  (8)
+5   OpPop
+6   OpIncrementCount
+7   OpJump  <1>  (9)
+8   OpPop
+9   OpIncrementIndex
+10  OpJumpBackward  <9>  (2)
+11  OpGetCount
+12  OpEnd
+
+=== sum_no_predicate ===
+0  OpPush  <0>  45
+
+=== sortBy_desc ===
+0   OpPush  <0>  [3 1 2]
+1   OpBegin
+2   OpPush    <1>  desc
+3   OpCreate  <2>
+4   OpSetAcc
+5   OpJumpIfEnd  <4>  (10)
+6   OpPointer
+7   OpSortBy
+8   OpIncrementIndex
+9   OpJumpBackward  <5>  (5)
+10  OpSort
+11  OpEnd
+
+=== reduce_no_initial ===
+0  OpPush  <0>  6
+
+=== len_array ===
+0  OpPush          <0>   [1 2 3]
+1  OpCallBuiltin1  <15>  len
+
+=== trim_one_arg ===
+0  OpPush   <0>   a 
+1  OpCall1  <0>  trim
+
+=== split_two_args ===
+0  OpPush   <0>  a,b
+1  OpPush   <1>  ,
+2  OpCall2  <0>  split
+
+=== replace_three_args ===
+0  OpPush   <0>  a,b
+1  OpPush   <1>  ,
+2  OpPush   <2>  ;
+3  OpCall3  <0>  replace
+
+=== join_two_args ===
+0  OpPush   <0>  [a b]
+1  OpPush   <1>  ,
+2  OpCall2  <0>  join
+
+=== join_one_arg ===
+0  OpPush   <0>  [a b]
+1  OpCall1  <0>  join
+
+=== date_one_arg ===
+0  OpPush   <0>  2020-01-01
+1  OpCall1  <0>  date
+
+=== get_map ===
+0  OpPush  <0>  a
+1  OpPush  <1>  1
+2  OpPush  <1>  1
+3  OpMap
+4  OpPush   <0>  a
+5  OpCall2  <0>  get
+
+=== sort_asc ===
+0  OpPush      <0>  [3 1 2]
+1  OpPush      <1>  sort
+2  OpCallSafe  <1>
+
+=== disabled_overridden_by_env ===
+0  OpLoadFast   <0>   len
+1  OpCallTyped  <12>  func() int
+
+=== disabled_overridden_by_function ===
+0  OpCall0  <0>  len
+
+=== force_builtin_call ===
+0  OpPush          <0>   [1 2]
+1  OpCallBuiltin1  <15>  len

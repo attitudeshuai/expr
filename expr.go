@@ -231,9 +231,9 @@ func Compile(input string, ops ...Option) (*vm.Program, error) {
 	for _, op := range ops {
 		op(config)
 	}
-	for name := range config.Disabled {
-		delete(config.Builtins, name)
-	}
+	// Derive the effective instance table from the registry minus the
+	// disabled set, instead of mutating the copied table in place.
+	config.Builtins = builtin.Enabled(config.Disabled)
 	config.Check()
 
 	tree, err := checker.ParseCheck(input, config)

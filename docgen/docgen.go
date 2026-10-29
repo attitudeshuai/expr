@@ -1,3 +1,5 @@
+//go:generate sh -c "go run ./docgen/gen -w ../docs/language-definition.md"
+
 package docgen
 
 import (
@@ -20,9 +22,10 @@ type Identifier string
 type TypeName string
 
 type Context struct {
-	Variables map[Identifier]*Type `json:"variables"`
-	Types     map[TypeName]*Type   `json:"types"`
-	PkgPath   string
+	Variables        map[Identifier]*Type `json:"variables"`
+	Types            map[TypeName]*Type   `json:"types"`
+	BuiltinFunctions []*BuiltinCategory   `json:"builtin_functions,omitempty"`
+	PkgPath          string
 }
 
 type Type struct {
@@ -35,48 +38,7 @@ type Type struct {
 	Return    *Type                `json:"return,omitempty"`
 }
 
-var (
-	Operators = []string{"matches", "contains", "startsWith", "endsWith"}
-	Builtins  = map[Identifier]*Type{
-		"true":   {Kind: "bool"},
-		"false":  {Kind: "bool"},
-		"len":    {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}}, Return: &Type{Kind: "int"}},
-		"all":    {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}, {Kind: "func"}}, Return: &Type{Kind: "bool"}},
-		"none":   {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}, {Kind: "func"}}, Return: &Type{Kind: "bool"}},
-		"any":    {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}, {Kind: "func"}}, Return: &Type{Kind: "bool"}},
-		"one":    {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}, {Kind: "func"}}, Return: &Type{Kind: "bool"}},
-		"filter": {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}, {Kind: "func"}}, Return: &Type{Kind: "array", Type: &Type{Kind: "any"}}},
-		"map":    {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}, {Kind: "func"}}, Return: &Type{Kind: "array", Type: &Type{Kind: "any"}}},
-		"count":  {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}, {Kind: "func"}}, Return: &Type{Kind: "int"}},
-
-		"trim":       {Kind: "func", Arguments: []*Type{{Name: "string", Kind: "string"}, {Name: "cutstr", Kind: "string"}}, Return: &Type{Name: "string", Kind: "string"}},
-		"trimPrefix": {Kind: "func", Arguments: []*Type{{Name: "string", Kind: "string"}, {Name: "cutstr", Kind: "string"}}, Return: &Type{Name: "string", Kind: "string"}},
-		"trimSuffix": {Kind: "func", Arguments: []*Type{{Name: "string", Kind: "string"}, {Name: "cutstr", Kind: "string"}}, Return: &Type{Name: "string", Kind: "string"}},
-
-		"upper":  {Kind: "func", Arguments: []*Type{{Name: "string", Kind: "string"}}, Return: &Type{Name: "string", Kind: "string"}},
-		"lower":  {Kind: "func", Arguments: []*Type{{Name: "string", Kind: "string"}}, Return: &Type{Name: "string", Kind: "string"}},
-		"repeat": {Kind: "func", Arguments: []*Type{{Name: "n", Kind: "int"}}, Return: &Type{Name: "string", Kind: "string"}},
-
-		"join":        {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}, {Name: "glue", Kind: "string"}}, Return: &Type{Name: "string", Kind: "string"}},
-		"indexOf":     {Kind: "func", Arguments: []*Type{{Name: "string", Kind: "string"}, {Name: "substr", Kind: "string"}}, Return: &Type{Name: "index", Kind: "int"}},
-		"lastIndexOf": {Kind: "func", Arguments: []*Type{{Name: "string", Kind: "string"}, {Name: "substr", Kind: "string"}}, Return: &Type{Name: "index", Kind: "int"}},
-
-		"hasPrefix": {Kind: "func", Arguments: []*Type{{Name: "string", Kind: "string"}, {Name: "prefix", Kind: "string"}}, Return: &Type{Kind: "bool"}},
-		"hasSuffix": {Kind: "func", Arguments: []*Type{{Name: "string", Kind: "string"}, {Name: "prefix", Kind: "string"}}, Return: &Type{Kind: "bool"}},
-
-		"toJSON":   {Kind: "func", Arguments: []*Type{{Kind: "any"}}, Return: &Type{Kind: "string"}},
-		"fromJSON": {Kind: "func", Arguments: []*Type{{Kind: "string"}}, Return: &Type{Kind: "any"}},
-
-		"toBase64":   {Kind: "func", Arguments: []*Type{{Kind: "string"}}, Return: &Type{Kind: "string"}},
-		"fromBase64": {Kind: "func", Arguments: []*Type{{Kind: "string"}}, Return: &Type{Kind: "string"}},
-
-		"first": {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}}, Return: &Type{Kind: "any"}},
-		"last":  {Kind: "func", Arguments: []*Type{{Kind: "array", Type: &Type{Kind: "any"}}}, Return: &Type{Kind: "any"}},
-
-		"now":      {Kind: "func", Return: &Type{Name: "time.Time", Kind: "struct"}},
-		"duration": {Kind: "func", Arguments: []*Type{{Kind: "string"}}, Return: &Type{Kind: "time.Duration"}},
-	}
-)
+var Operators = []string{"matches", "contains", "startsWith", "endsWith"}
 
 func CreateDoc(i any) *Context {
 	c := &Context{
@@ -102,6 +64,12 @@ func CreateDoc(i any) *Context {
 
 	for builtin, t := range Builtins {
 		c.Variables[builtin] = t
+	}
+
+	// The catalog is derived from the same registry as Builtins; suppressing
+	// Builtins (e.g. in tests) suppresses the catalog as well.
+	if len(Builtins) > 0 {
+		c.BuiltinFunctions = builtinCatalog()
 	}
 
 	return c

@@ -473,7 +473,7 @@ func (vm *VM) Run(program *Program, env any) (_ any, err error) {
 			vm.push(vm.call(vm.pop(), arg))
 
 		case OpCallBuiltin1:
-			vm.push(builtin.Builtins[arg].Fast(vm.pop()))
+			vm.push(builtin.FastAt(arg)(vm.pop()))
 
 		case OpArray:
 			size := vm.pop().(int)

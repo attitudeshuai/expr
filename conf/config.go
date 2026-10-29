@@ -51,12 +51,12 @@ func CreateNew() *Config {
 		MaxNodes:     DefaultMaxNodes,
 		ConstFns:     make(map[string]reflect.Value),
 		Functions:    make(map[string]*builtin.Function),
-		Builtins:     make(map[string]*builtin.Function),
 		Disabled:     make(map[string]bool),
 	}
-	for _, f := range builtin.Builtins {
-		c.Builtins[f.Name] = f
-	}
+	// The instance table is derived from the single source of truth, the
+	// builtin registry; it is copied (not referenced) so options can disable
+	// individual builtins per compilation without mutating the registry.
+	c.Builtins = builtin.Table()
 	return c
 }
 

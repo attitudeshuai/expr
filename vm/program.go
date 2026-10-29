@@ -127,7 +127,7 @@ func (program *Program) DisassembleWriter(w io.Writer) {
 			_, _ = fmt.Fprintf(w, "%v\t%v\t<%v>\t%v\n", pp, label, arg, c)
 		}
 		builtinArg := func(label string) {
-			_, _ = fmt.Fprintf(w, "%v\t%v\t<%v>\t%v\n", pp, label, arg, builtin.Builtins[arg].Name)
+			_, _ = fmt.Fprintf(w, "%v\t%v\t<%v>\t%v\n", pp, label, arg, builtin.NameOf(arg))
 		}
 
 		switch op {

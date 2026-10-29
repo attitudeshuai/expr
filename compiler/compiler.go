@@ -1147,8 +1147,8 @@ func (c *compiler) BuiltinNode(node *ast.BuiltinNode) {
 
 	}
 
-	if id, ok := builtin.Index[node.Name]; ok {
-		f := builtin.Builtins[id]
+	if id, ok := builtin.IndexOf(node.Name); ok {
+		f := builtin.ByIndex(id)
 		for i, arg := range node.Arguments {
 			c.compile(arg)
 			argType := arg.Type()

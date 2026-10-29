@@ -346,6 +346,8 @@ filter(posts, {
 
 :::
 
+<!-- BEGIN BUILTIN FUNCTIONS -->
+
 ## String Functions
 
 ### trim(str[, chars]) {#trim}
@@ -482,7 +484,7 @@ createdAt > now() - duration("1h")
 Returns the current date as a [time.Time](https://pkg.go.dev/time#Time) value.
 
 ```expr
-now().Year() == 2024
+now().Year() >= 2024
 ```
 
 ### duration(str) {#duration}
@@ -515,13 +517,6 @@ If the `format` argument is not given, the `v` argument must be in one of the fo
 - RFC850,
 - RFC1123,
 
-```expr
-date("2023-08-14")
-date("15:04:05")
-date("2023-08-14T00:00:00Z")
-date("2023-08-14 00:00:00", "2006-01-02 15:04:05", "Europe/Zurich")
-```
-
 Available methods on the date:
 
 - `Year()` - returns the year 
@@ -535,6 +530,10 @@ Available methods on the date:
 - and [more](https://pkg.go.dev/time#Time).
 
 ```expr
+date("2023-08-14")
+date("15:04:05")
+date("2023-08-14T00:00:00Z")
+date("2023-08-14 00:00:00", "2006-01-02 15:04:05", "Europe/Zurich")
 date("2023-08-14").Year() == 2023
 ```
 
@@ -555,22 +554,6 @@ date("2023-08-14 00:00:00").In(timezone("Europe/Zurich"))
 ```
 
 ## Number Functions
-
-### max(n1, n2) {#max}
-
-Returns the maximum of the two numbers `n1` and `n2`.
-
-```expr
-max(5, 7) == 7
-```
-
-### min(n1, n2) {#min}
-
-Returns the minimum of the two numbers `n1` and `n2`.
-
-```expr
-min(5, 7) == 5
-```
 
 ### abs(n) {#abs}
 
@@ -604,6 +587,22 @@ Returns the nearest integer, rounding half away from zero.
 round(1.5) == 2.0
 ```
 
+### max(n1, n2) {#max}
+
+Returns the maximum of the two numbers `n1` and `n2`.
+
+```expr
+max(5, 7) == 7
+```
+
+### min(n1, n2) {#min}
+
+Returns the minimum of the two numbers `n1` and `n2`.
+
+```expr
+min(5, 7) == 5
+```
+
 ## Array Functions
 
 ### all(array, predicate) {#all}
@@ -612,25 +611,7 @@ Returns **true** if all elements satisfies the [predicate](#predicate).
 If the array is empty, returns **true**.
 
 ```expr
-all(tweets, {.Size < 280})
-```
-
-### any(array, predicate) {#any}
-
-Returns **true** if any elements satisfies the [predicate](#predicate).
-If the array is empty, returns **false**.
-
-```expr
-any(tweets, {.Size > 280})
-```
-
-### one(array, predicate) {#one}
-
-Returns **true** if _exactly one_ element satisfies the [predicate](#predicate).
-If the array is empty, returns **false**.
-
-```expr
-one(participants, {.Winner})
+all([1, 2, 3], # > 0) == true
 ```
 
 ### none(array, predicate) {#none}
@@ -639,7 +620,33 @@ Returns **true** if _all elements does not_ satisfy the [predicate](#predicate).
 If the array is empty, returns **true**.
 
 ```expr
-none(tweets, {.Size > 280})
+none([1, 2, 3], # > 3) == true
+```
+
+### any(array, predicate) {#any}
+
+Returns **true** if any elements satisfies the [predicate](#predicate).
+If the array is empty, returns **false**.
+
+```expr
+any([1, 2, 3], # > 2) == true
+```
+
+### one(array, predicate) {#one}
+
+Returns **true** if _exactly one_ element satisfies the [predicate](#predicate).
+If the array is empty, returns **false**.
+
+```expr
+one([1, 2, 3], # == 2) == true
+```
+
+### filter(array, predicate) {#filter}
+
+Returns new array by filtering elements of array by [predicate](#predicate).
+
+```expr
+filter([1, 2, 3, 4], # > 2) == [3, 4]
 ```
 
 ### map(array, predicate) {#map}
@@ -648,15 +655,7 @@ Returns new array by applying the [predicate](#predicate) to each element of
 the array.
 
 ```expr
-map(tweets, {.Size})
-```
-
-### filter(array, predicate) {#filter}
-
-Returns new array by filtering elements of the array by [predicate](#predicate).
-
-```expr
-filter(users, .Name startsWith "J")
+map([1, 2, 3], # * 2) == [2, 4, 6]
 ```
 
 ### find(array, predicate) {#find}
@@ -691,66 +690,44 @@ Finds the index of the last element in an array that satisfies the [predicate](#
 findLastIndex([1, 2, 3, 4], # > 2) == 3
 ```
 
+### count(array[, predicate]) {#count}
+
+Returns the number of elements what satisfies the [predicate](#predicate).
+If the predicate is not given, returns the number of `true` elements in the array.
+
+```expr
+count([1, 2, 3], # > 1) == 2
+len(filter([1, 2, 3], # > 1)) == 2
+count([true, false, true]) == 2
+```
+
+### sum(array[, predicate]) {#sum}
+
+Returns the sum of all numbers in the array.
+If the optional `predicate` argument is given, it is a predicate that is applied on each element
+of the array before summing.
+
+```expr
+sum([1, 2, 3]) == 6
+sum(map([1, 2, 3], # * 2)) == 12
+```
+
 ### groupBy(array, predicate) {#groupBy}
 
 Groups the elements of an array by the result of the [predicate](#predicate).
 
 ```expr
-groupBy(users, .Age)
+groupBy([1, 2, 3, 4], # % 2)[0] == [2, 4]
 ```
 
-### count(array[, predicate]) {#count}
+### sortBy(array[, predicate, order]) {#sortBy}
 
-Returns the number of elements what satisfies the [predicate](#predicate).
-
-```expr
-count(users, .Age > 18)
-```
-
-Equivalent to:
+Sorts an array by the result of the [predicate](#predicate). Optional `order` argument can be used to specify the order
+of sorting: `asc` or `desc`.
 
 ```expr
-len(filter(users, .Age > 18))
-```
-
-If the predicate is not given, returns the number of `true` elements in the array.
-
-```expr
-count([true, false, true]) == 2
-```
-
-### concat(array1, array2[, ...]) {#concat}
-
-Concatenates two or more arrays.
-
-```expr
-concat([1, 2], [3, 4]) == [1, 2, 3, 4]
-```
-
-### flatten(array) {#flatten}
-
-Flattens given array into one-dimensional array.
-
-```expr
-flatten([1, 2, [3, 4]]) == [1, 2, 3, 4]
-```
-
-### uniq(array) {#uniq}
-
-Removes duplicates from an array.
-
-```expr
-uniq([1, 2, 3, 2, 1]) == [1, 2, 3]
-```
-
-### join(array[, delimiter]) {#join}
-
-Joins an array of strings into a single string with the given delimiter.
-If no delimiter is given, an empty string is used.
-
-```expr
-join(["apple", "orange", "grape"], ",") == "apple,orange,grape"
-join(["apple", "orange", "grape"]) == "appleorangegrape"
+sortBy([3, 1, 2], #) == [1, 2, 3]
+sortBy([3, 1, 2], #, "desc") == [3, 2, 1]
 ```
 
 ### reduce(array, predicate[, initialValue]) {#reduce}
@@ -770,27 +747,14 @@ reduce(1..9, #acc + #)
 reduce(1..9, #acc + #, 0)
 ```
 
-### sum(array[, predicate]) {#sum}
+### join(array[, delimiter]) {#join}
 
-Returns the sum of all numbers in the array.
-
-```expr
-sum([1, 2, 3]) == 6
-```
-
-If the optional `predicate` argument is given, it is a predicate that is applied on each element
-of the array before summing.
+Joins an array of strings into a single string with the given delimiter.
+If no delimiter is given, an empty string is used.
 
 ```expr
-sum(accounts, .Balance)
-```
-
-Equivalent to:
-
-```expr
-reduce(accounts, #acc + .Balance, 0)
-// or
-sum(map(accounts, .Balance))
+join(["apple", "orange", "grape"], ",") == "apple,orange,grape"
+join(["apple", "orange", "grape"]) == "appleorangegrape"
 ```
 
 ### mean(array) {#mean}
@@ -842,6 +806,30 @@ reverse([3, 1, 4]) == [4, 1, 3]
 reverse(reverse([3, 1, 4])) == [3, 1, 4]
 ```
 
+### uniq(array) {#uniq}
+
+Removes duplicates from an array.
+
+```expr
+uniq([1, 2, 3, 2, 1]) == [1, 2, 3]
+```
+
+### concat(array1, array2[, ...]) {#concat}
+
+Concatenates two or more arrays.
+
+```expr
+concat([1, 2], [3, 4]) == [1, 2, 3, 4]
+```
+
+### flatten(array) {#flatten}
+
+Flattens given array into one-dimensional array.
+
+```expr
+flatten([1, 2, [3, 4]]) == [1, 2, 3, 4]
+```
+
 ### sort(array[, order]) {#sort}
 
 Sorts an array in ascending order. Optional `order` argument can be used to specify the order of sorting: `asc`
@@ -850,16 +838,6 @@ or `desc`.
 ```expr
 sort([3, 1, 4]) == [1, 3, 4]
 sort([3, 1, 4], "desc") == [4, 3, 1]
-```
-
-### sortBy(array[, predicate, order]) {#sortBy}
-
-Sorts an array by the result of the [predicate](#predicate). Optional `order` argument can be used to specify the order
-of sorting: `asc` or `desc`.
-
-```expr
-sortBy(users, .Age)
-sortBy(users, .Age, "desc")
 ```
 
 ## Map Functions
@@ -974,7 +952,7 @@ toPairs({"name": "John", "age": 30}) == [["name", "John"], ["age", 30]]
 Converts an array of key-value pairs to a map.
 
 ```expr
-fromPairs([["name", "John"], ["age", 30]]) == {"name": "John", "age": 30}
+fromPairs([["name", "John"], ["age", 30]])["name"] == "John"
 ```
 
 ## Miscellaneous Functions
@@ -1033,14 +1011,6 @@ Returns the values resulting from the bitwise AND NOT operation.
 bitnand(0b1010, 0b1100) == 0b10
 ```
 
-### bitnot(int) {#bitnot}
-
-Returns the values resulting from the bitwise NOT operation.
-
-```expr
-bitnot(0b1010) == -0b1011
-```
-
 ### bitshl(int, int) {#bitshl}
 
 Returns the values resulting from the Left Shift operation.
@@ -1064,3 +1034,14 @@ Returns the values resulting from the unsigned Right Shift operation.
 ```expr
 bitushr(-0b101, 2) == 4611686018427387902
 ```
+
+### bitnot(int) {#bitnot}
+
+Returns the values resulting from the bitwise NOT operation.
+
+```expr
+bitnot(0b1010) == -0b1011
+```
+
+<!-- END BUILTIN FUNCTIONS -->
+

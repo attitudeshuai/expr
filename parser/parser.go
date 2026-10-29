@@ -26,24 +26,31 @@ const (
 
 const optional arg = 1 << 7
 
-var predicates = map[string]struct {
+// predicates is derived from the builtin registry; see builtin.PredicateArguments.
+var predicates = derivePredicates()
+
+type predicateArgs struct {
 	args []arg
-}{
-	"all":           {[]arg{expr, predicate}},
-	"none":          {[]arg{expr, predicate}},
-	"any":           {[]arg{expr, predicate}},
-	"one":           {[]arg{expr, predicate}},
-	"filter":        {[]arg{expr, predicate}},
-	"map":           {[]arg{expr, predicate}},
-	"count":         {[]arg{expr, predicate | optional}},
-	"sum":           {[]arg{expr, predicate | optional}},
-	"find":          {[]arg{expr, predicate}},
-	"findIndex":     {[]arg{expr, predicate}},
-	"findLast":      {[]arg{expr, predicate}},
-	"findLastIndex": {[]arg{expr, predicate}},
-	"groupBy":       {[]arg{expr, predicate}},
-	"sortBy":        {[]arg{expr, predicate, expr | optional}},
-	"reduce":        {[]arg{expr, predicate, expr | optional}},
+}
+
+func derivePredicates() map[string]predicateArgs {
+	derived := builtin.PredicateArguments()
+	out := make(map[string]predicateArgs, len(derived))
+	for name, specs := range derived {
+		args := make([]arg, len(specs))
+		for i, spec := range specs {
+			if spec.Kind == builtin.ArgumentPredicate {
+				args[i] = predicate
+			} else {
+				args[i] = expr
+			}
+			if spec.Optional {
+				args[i] |= optional
+			}
+		}
+		out[name] = predicateArgs{args: args}
+	}
+	return out
 }
 
 // Parser is a reusable parser. The zero value is ready for use.
